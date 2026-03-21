@@ -7,156 +7,124 @@ color 0A
 :: =========================
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
-    echo.
-    echo [!] Elevando privilegios...
-    timeout /t 2 >nul
+    echo Elevando privilegios...
     powershell -Command "Start-Process cmd -ArgumentList '/c %~s0' -Verb RunAs"
     exit
 )
 
 :menu
 cls
-echo.
-echo =========================================
+echo =====================================
 echo              L Y N E X T
-echo =========================================
+echo =====================================
 echo.
-echo  [1] REDE
-echo  [2] OTIMIZACAO
-echo  [3] TESTES
-echo.
-echo  [0] SAIR
+echo 1 - REDE
+echo 2 - OTIMIZACAO
+echo 3 - TESTES
+echo 0 - SAIR
 echo.
 
 choice /c 1230 /n /m "Escolha: "
 
 if errorlevel 4 exit
-if errorlevel 3 goto test_menu
-if errorlevel 2 goto opt_menu
-if errorlevel 1 goto rede_menu
+if errorlevel 3 goto testes
+if errorlevel 2 goto otim
+if errorlevel 1 goto rede
 goto menu
 
 :: =========================
 :: REDE
 :: =========================
-:rede_menu
+:rede
 cls
-echo.
 echo ===== REDE =====
 echo.
-echo  [1] Renovar IP
-echo  [2] Limpar DNS
-echo  [3] Reset completo de rede
-echo  [4] MTU AUTOMATICO
-echo  [5] DNS AUTOMATICO
-echo.
-echo  [0] Voltar
+echo 1 - Renovar IP
+echo 2 - Limpar DNS
+echo 3 - Reset completo
+echo 4 - MTU AUTOMATICO
+echo 5 - DNS AUTOMATICO
+echo 0 - Voltar
 echo.
 
-choice /c 123450 /n /m "Escolha: "
+choice /c 123450 /n
 
 if errorlevel 6 goto menu
-if errorlevel 5 goto dns_auto
-if errorlevel 4 goto mtu_auto
-if errorlevel 3 goto reset_rede
-if errorlevel 2 goto limpar_dns
-if errorlevel 1 goto renovar_ip
-goto rede_menu
+if errorlevel 5 goto dns
+if errorlevel 4 goto mtu
+if errorlevel 3 goto reset
+if errorlevel 2 goto flush
+if errorlevel 1 goto renovar
+goto rede
 
-:renovar_ip
+:renovar
 ipconfig /release
 ipconfig /renew
 pause
-goto rede_menu
+goto rede
 
-:limpar_dns
+:flush
 ipconfig /flushdns
 pause
-goto rede_menu
+goto rede
 
-:reset_rede
+:reset
 netsh winsock reset
 netsh int ip reset
 pause
-goto rede_menu
+goto rede
 
 :: =========================
 :: MTU AUTOMATICO (PRECISO)
 :: =========================
-:mtu_auto
+:mtu
 cls
-echo.
-echo =========================================
-echo        BUSCANDO MTU IDEAL
-echo =========================================
+echo =====================================
+echo      BUSCANDO MTU IDEAL
+echo =====================================
 echo.
 
 set target=google.com
 set mtu=1472
 
-:: =========================
-:: FASE 1 - BUSCA RAPIDA
-:: =========================
-echo [FASE 1] BUSCA RAPIDA...
-
-:fast_search
-ping %target% -f -l %mtu% -n 1 >nul
+:mtu_loop
 echo Testando: %mtu%
+ping %target% -f -l %mtu% -n 1 >nul
 
 if errorlevel 1 (
-    set /a mtu=%mtu%-10
-    goto fast_search
+    set /a mtu=%mtu%-1
+    goto mtu_loop
 )
-
-:: =========================
-:: FASE 2 - AJUSTE FINO
-:: =========================
-echo.
-echo [FASE 2] AJUSTE FINO...
-
-set /a mtu=%mtu%+10
-
-:fine_search
-set /a mtu=%mtu%-1
-ping %target% -f -l %mtu% -n 1 >nul
-echo Refinando: %mtu%
-
-if errorlevel 1 goto fine_search
 
 set /a final=%mtu%+28
 
 echo.
-echo =========================================
 echo MTU IDEAL: %final%
-echo =========================================
 echo.
 
-:: aplicar
-for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set interface=%%i
-set interface=%interface:~1%
+for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set iface=%%i
+set iface=%iface:~1%
 
-echo Interface: %interface%
 echo Aplicando MTU...
-netsh interface ipv4 set subinterface "%interface%" mtu=%final% store=persistent >nul 2>&1
+netsh interface ipv4 set subinterface "%iface%" mtu=%final% store=persistent
 
-echo MTU aplicado com sucesso.
+echo Concluido!
 pause
-goto rede_menu
+goto rede
 
 :: =========================
-:: DNS AUTOMATICO
+:: DNS AUTOMATICO (CORRETO)
 :: =========================
-:dns_auto
+:dns
 cls
-echo.
-echo =========================================
-echo        TESTE AUTOMATICO DE DNS
-echo =========================================
+echo =====================================
+echo       TESTE AUTOMATICO DNS
+echo =====================================
 echo.
 
-call :get_ping 8.8.8.8 g Google
-call :get_ping 1.1.1.1 c Cloudflare
-call :get_ping 9.9.9.9 q Quad9
+call :ping 8.8.8.8 g Google
+call :ping 1.1.1.1 c Cloudflare
+call :ping 9.9.9.9 q Quad9
 
 echo.
 echo RESULTADOS:
@@ -179,99 +147,95 @@ if %q% LSS %bestv% (
 )
 
 echo Melhor DNS: %best% (%bestv% ms)
+echo.
 
-for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set interface=%%i
-set interface=%interface:~1%
+for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set iface=%%i
+set iface=%iface:~1%
 
 echo Aplicando DNS...
-netsh interface ip set dns name="%interface%" static %best% >nul 2>&1
+netsh interface ip set dns name="%iface%" static %best%
 
-echo DNS aplicado com sucesso.
+echo Concluido!
 pause
-goto rede_menu
+goto rede
 
-:get_ping
+:: =========================
+:: FUNCAO PING
+:: =========================
+:ping
 set ip=%1
 set var=%2
-set nome=%3
 
-echo Testando %nome%...
+set val=999
+for /f "tokens=6 delims== " %%a in ('ping -n 2 %ip% ^| findstr /i "Average Média"') do set val=%%a
 
-set temp=999
-for /f "tokens=6 delims== " %%a in ('ping -n 2 %ip% ^| findstr /i "Average Média"') do set temp=%%a
+set val=%val:ms=%
+set %var%=%val%
 
-set temp=%temp:ms=%
-set %var%=%temp%
-
-echo %nome%: %temp% ms
-echo.
+echo %3: %val% ms
 goto :eof
 
 :: =========================
 :: OTIMIZACAO
 :: =========================
-:opt_menu
+:otim
 cls
-echo.
 echo ===== OTIMIZACAO =====
 echo.
-echo  [1] Desempenho maximo
-echo  [2] SFC
-echo  [3] DISM
-echo.
-echo  [0] Voltar
+echo 1 - Alto desempenho
+echo 2 - SFC
+echo 3 - DISM
+echo 0 - Voltar
 echo.
 
-choice /c 1230 /n /m "Escolha: "
+choice /c 1230 /n
 
 if errorlevel 4 goto menu
 if errorlevel 3 goto dism
 if errorlevel 2 goto sfc
-if errorlevel 1 goto desempenho
-goto opt_menu
+if errorlevel 1 goto perf
+goto otim
 
-:desempenho
+:perf
 powercfg -setactive SCHEME_MIN
 pause
-goto opt_menu
+goto otim
 
 :sfc
 sfc /scannow
 pause
-goto opt_menu
+goto otim
 
 :dism
 DISM /Online /Cleanup-Image /RestoreHealth
 pause
-goto opt_menu
+goto otim
 
 :: =========================
 :: TESTES
 :: =========================
-:test_menu
+:testes
 cls
-echo.
 echo ===== TESTES =====
 echo.
-echo  [1] Ping Google
-echo  [2] Ping Cloudflare
-echo.
-echo  [0] Voltar
+echo 1 - Ping Google
+echo 2 - Ping Cloudflare
+echo 0 - Voltar
 echo.
 
-choice /c 120 /n /m "Escolha: "
+choice /c 120 /n
 
 if errorlevel 3 goto menu
 if errorlevel 2 goto ping_cf
 if errorlevel 1 goto ping_google
-goto test_menu
+goto testes
 
 :ping_google
 ping google.com
 pause
-goto test_menu
+goto testes
 
 :ping_cf
 ping 1.1.1.1
 pause
-goto test_menu
+goto testes
