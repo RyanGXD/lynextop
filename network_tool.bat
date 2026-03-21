@@ -1,6 +1,6 @@
 @echo off
-title Lynext Network Tool PRO
-color 0A
+title Lynext Optimization
+color 0C
 
 :: =========================
 :: ADMIN
@@ -14,9 +14,12 @@ if %errorLevel% NEQ 0 (
 
 :menu
 cls
-echo =====================================
-echo              L Y N E X T
-echo =====================================
+color 0C
+echo.
+echo ============================================
+echo           LYNEXT OPTIMIZATION
+echo        Network ^& System Toolkit
+echo ============================================
 echo.
 echo 1 - REDE
 echo 2 - OTIMIZACAO
@@ -75,6 +78,44 @@ pause
 goto rede
 
 :: =========================
+:: SELECIONAR INTERFACE
+:: =========================
+:select_interface
+cls
+echo =====================================
+echo     SELECIONE A INTERFACE DE REDE
+echo =====================================
+echo.
+
+netsh interface ipv4 show interfaces
+
+echo.
+set /p idx=Digite o NUMERO (Idx) da interface: 
+
+if "%idx%"=="" (
+    echo [ERRO] Entrada invalida
+    pause
+    goto rede
+)
+
+set iface=
+
+for /f "tokens=1,2,3*" %%a in ('netsh interface ipv4 show interfaces') do (
+    if "%%a"=="%idx%" set iface=%%d
+)
+
+if "%iface%"=="" (
+    echo [ERRO] Interface nao encontrada
+    pause
+    goto rede
+)
+
+echo.
+echo Interface escolhida: "%iface%"
+pause
+goto :eof
+
+:: =========================
 :: MTU AUTOMATICO
 :: =========================
 :mtu
@@ -102,27 +143,7 @@ echo.
 echo MTU IDEAL: %final%
 echo.
 
-:: =========================
-:: ESCOLHER INTERFACE
-:: =========================
-echo =====================================
-echo     SELECIONE A INTERFACE DE REDE
-echo =====================================
-echo.
-
-netsh interface ipv4 show interfaces
-
-echo.
-set /p iface=Digite o nome EXATO da interface: 
-
-if "%iface%"=="" (
-    echo [ERRO] Interface invalida
-    pause
-    goto rede
-)
-
-echo.
-echo Interface escolhida: "%iface%"
+call :select_interface
 
 echo Aplicando MTU...
 netsh interface ipv4 set subinterface "%iface%" mtu=%final% store=persistent
@@ -168,27 +189,7 @@ if %q% LSS %bestv% (
 echo Melhor DNS: %best% (%bestv% ms)
 echo.
 
-:: =========================
-:: ESCOLHER INTERFACE
-:: =========================
-echo =====================================
-echo     SELECIONE A INTERFACE DE REDE
-echo =====================================
-echo.
-
-netsh interface ipv4 show interfaces
-
-echo.
-set /p iface=Digite o nome EXATO da interface: 
-
-if "%iface%"=="" (
-    echo [ERRO] Interface invalida
-    pause
-    goto rede
-)
-
-echo.
-echo Interface escolhida: "%iface%"
+call :select_interface
 
 echo Aplicando DNS...
 netsh interface ip set dns name="%iface%" static %best%
