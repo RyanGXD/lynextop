@@ -1,296 +1,277 @@
 @echo off
-title Lynext Optimization
-setlocal EnableDelayedExpansion
+title Lynext Network Tool PRO
+color 0A
 
+:: =========================
 :: ADMIN
+:: =========================
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
+    echo.
+    echo [!] Elevando privilegios...
+    timeout /t 2 >nul
     powershell -Command "Start-Process cmd -ArgumentList '/c %~s0' -Verb RunAs"
     exit
 )
 
-:: =========================
-:: MENU PRINCIPAL
-:: =========================
 :menu
 cls
-echo =====================================
-echo         LYNEXT OPTIMIZATION
-echo =====================================
 echo.
-echo 1 - REDE
-echo 2 - OTIMIZACAO
-echo 3 - TESTES
-echo 0 - SAIR
+echo =========================================
+echo              L Y N E X T
+echo =========================================
+echo.
+echo  [1] REDE
+echo  [2] OTIMIZACAO
+echo  [3] TESTES
+echo.
+echo  [0] SAIR
 echo.
 
-choice /c 1230 /n
+choice /c 1230 /n /m "Escolha: "
 
 if errorlevel 4 exit
-if errorlevel 3 goto testes
-if errorlevel 2 goto otim
-if errorlevel 1 goto rede
+if errorlevel 3 goto test_menu
+if errorlevel 2 goto opt_menu
+if errorlevel 1 goto rede_menu
 goto menu
 
 :: =========================
 :: REDE
 :: =========================
-:rede
+:rede_menu
 cls
+echo.
 echo ===== REDE =====
 echo.
-echo 1 - Renovar IP
-echo 2 - Limpar DNS
-echo 3 - Reset completo
-echo 4 - MTU
-echo 5 - DNS AUTOMATICO
-echo 0 - Voltar
+echo  [1] Renovar IP
+echo  [2] Limpar DNS
+echo  [3] Reset completo de rede
+echo  [4] MTU AUTOMATICO
+echo  [5] DNS AUTOMATICO
+echo.
+echo  [0] Voltar
 echo.
 
-choice /c 123450 /n
+choice /c 123450 /n /m "Escolha: "
 
 if errorlevel 6 goto menu
-if errorlevel 5 goto dns
-if errorlevel 4 goto mtu_menu
-if errorlevel 3 goto reset
-if errorlevel 2 goto flush
-if errorlevel 1 goto renovar
-goto rede
+if errorlevel 5 goto dns_auto
+if errorlevel 4 goto mtu_auto
+if errorlevel 3 goto reset_rede
+if errorlevel 2 goto limpar_dns
+if errorlevel 1 goto renovar_ip
+goto rede_menu
 
-:renovar
+:renovar_ip
 ipconfig /release
 ipconfig /renew
 pause
-goto rede
+goto rede_menu
 
-:flush
+:limpar_dns
 ipconfig /flushdns
 pause
-goto rede
+goto rede_menu
 
-:reset
+:reset_rede
 netsh winsock reset
 netsh int ip reset
 pause
-goto rede
+goto rede_menu
 
 :: =========================
-:: MTU MENU
+:: MTU AUTOMATICO (PRECISO)
 :: =========================
-:mtu_menu
+:mtu_auto
 cls
-echo ===== MTU =====
 echo.
-echo 1 - MTU ANALYZER
-echo 2 - MTU ALTERAR
-echo 0 - Voltar
+echo =========================================
+echo        BUSCANDO MTU IDEAL
+echo =========================================
 echo.
-
-choice /c 120 /n
-
-if errorlevel 3 goto rede
-if errorlevel 2 goto mtu_set
-if errorlevel 1 goto mtu_analyzer
-goto mtu_menu
-
-:: =========================
-:: MTU ANALYZER
-:: =========================
-:mtu_analyzer
-cls
-echo ===============================
-echo        MTU ANALYZER
-echo ===============================
-echo.
-
-for /f "skip=3 tokens=1,2,3,4,*" %%a in ('netsh interface show interface') do (
-    if /i "%%b"=="Connected" (
-        echo %%e | findstr /i "Loopback" >nul
-        if errorlevel 1 (
-            call :test_mtu "%%e"
-        )
-    )
-)
-
-echo.
-echo Analise concluida!
-pause
-goto mtu_menu
-
-:: =========================
-:: TESTE DE MTU INDIVIDUAL
-:: =========================
-:test_mtu
-set iface=%~1
-
-echo -------------------------------
-echo Interface: %iface%
-echo -------------------------------
 
 set target=google.com
 set mtu=1472
 
-:loop_mtu
+:: =========================
+:: FASE 1 - BUSCA RAPIDA
+:: =========================
+echo [FASE 1] BUSCA RAPIDA...
+
+:fast_search
 ping %target% -f -l %mtu% -n 1 >nul
+echo Testando: %mtu%
 
 if errorlevel 1 (
-    set /a mtu-=1
-    goto loop_mtu
+    set /a mtu=%mtu%-10
+    goto fast_search
 )
+
+:: =========================
+:: FASE 2 - AJUSTE FINO
+:: =========================
+echo.
+echo [FASE 2] AJUSTE FINO...
+
+set /a mtu=%mtu%+10
+
+:fine_search
+set /a mtu=%mtu%-1
+ping %target% -f -l %mtu% -n 1 >nul
+echo Refinando: %mtu%
+
+if errorlevel 1 goto fine_search
 
 set /a final=%mtu%+28
 
-echo MTU ideal: %final%
+echo.
+echo =========================================
+echo MTU IDEAL: %final%
+echo =========================================
 echo.
 
-goto :eof
+:: aplicar
+for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set interface=%%i
+set interface=%interface:~1%
 
-:: =========================
-:: MTU ALTERAR
-:: =========================
-:mtu_set
-cls
-echo ===============================
-echo        ALTERAR MTU
-echo ===============================
-echo.
+echo Interface: %interface%
+echo Aplicando MTU...
+netsh interface ipv4 set subinterface "%interface%" mtu=%final% store=persistent >nul 2>&1
 
-echo Interfaces disponiveis:
-netsh interface ipv4 show interfaces
-
-echo.
-set /p iface=Digite o nome da interface: 
-set /p mtu=Digite a MTU desejada: 
-
-echo.
-echo Aplicando...
-
-netsh interface ipv4 set subinterface "%iface%" mtu=%mtu% store=persistent
-
-echo.
-echo Concluido!
+echo MTU aplicado com sucesso.
 pause
-goto mtu_menu
+goto rede_menu
 
 :: =========================
 :: DNS AUTOMATICO
 :: =========================
-:dns
+:dns_auto
 cls
-echo ===== TESTE DE DNS =====
+echo.
+echo =========================================
+echo        TESTE AUTOMATICO DE DNS
+echo =========================================
 echo.
 
-call :ping 8.8.8.8 g Google
-call :ping 1.1.1.1 c Cloudflare
-call :ping 9.9.9.9 q Quad9
+call :get_ping 8.8.8.8 g Google
+call :get_ping 1.1.1.1 c Cloudflare
+call :get_ping 9.9.9.9 q Quad9
 
 echo.
 echo RESULTADOS:
-echo Google: %g% ms
-echo Cloudflare: %c% ms
-echo Quad9: %q% ms
+echo Google:      %g% ms
+echo Cloudflare:  %c% ms
+echo Quad9:       %q% ms
+echo.
 
 set best=8.8.8.8
 set bestv=%g%
 
-if %c% LSS %bestv% (set best=1.1.1.1 & set bestv=%c%)
-if %q% LSS %bestv% (set best=9.9.9.9 & set bestv=%q%)
-
-echo.
-echo Melhor DNS: %best%
-
-echo.
-echo Aplicando DNS em Ethernet...
-netsh interface ip set dns name="Ethernet" static %best% >nul 2>&1
-
-echo Aplicando DNS em Wi-Fi...
-netsh interface ip set dns name="Wi-Fi" static %best% >nul 2>&1
-
-echo.
-echo DNS aplicado!
-pause
-goto rede
-
-:: =========================
-:: PING
-:: =========================
-:ping
-set ip=%1
-set var=%2
-
-set val=999
-
-for /f "tokens=6 delims== " %%a in ('ping -n 1 %ip% ^| findstr /i "time="') do (
-    set val=%%a
+if %c% LSS %bestv% (
+    set best=1.1.1.1
+    set bestv=%c%
 )
 
-set val=%val:ms=%
-set %var%=%val%
+if %q% LSS %bestv% (
+    set best=9.9.9.9
+    set bestv=%q%
+)
 
-echo %3: %val% ms
+echo Melhor DNS: %best% (%bestv% ms)
+
+for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set interface=%%i
+set interface=%interface:~1%
+
+echo Aplicando DNS...
+netsh interface ip set dns name="%interface%" static %best% >nul 2>&1
+
+echo DNS aplicado com sucesso.
+pause
+goto rede_menu
+
+:get_ping
+set ip=%1
+set var=%2
+set nome=%3
+
+echo Testando %nome%...
+
+set temp=999
+for /f "tokens=6 delims== " %%a in ('ping -n 2 %ip% ^| findstr /i "Average Média"') do set temp=%%a
+
+set temp=%temp:ms=%
+set %var%=%temp%
+
+echo %nome%: %temp% ms
+echo.
 goto :eof
 
 :: =========================
 :: OTIMIZACAO
 :: =========================
-:otim
+:opt_menu
 cls
+echo.
 echo ===== OTIMIZACAO =====
 echo.
-echo 1 - Alto desempenho
-echo 2 - SFC
-echo 3 - DISM
-echo 0 - Voltar
+echo  [1] Desempenho maximo
+echo  [2] SFC
+echo  [3] DISM
+echo.
+echo  [0] Voltar
 echo.
 
-choice /c 1230 /n
+choice /c 1230 /n /m "Escolha: "
 
 if errorlevel 4 goto menu
 if errorlevel 3 goto dism
 if errorlevel 2 goto sfc
-if errorlevel 1 goto perf
-goto otim
+if errorlevel 1 goto desempenho
+goto opt_menu
 
-:perf
+:desempenho
 powercfg -setactive SCHEME_MIN
 pause
-goto otim
+goto opt_menu
 
 :sfc
 sfc /scannow
 pause
-goto otim
+goto opt_menu
 
 :dism
 DISM /Online /Cleanup-Image /RestoreHealth
 pause
-goto otim
+goto opt_menu
 
 :: =========================
 :: TESTES
 :: =========================
-:testes
+:test_menu
 cls
+echo.
 echo ===== TESTES =====
 echo.
-echo 1 - Ping Google
-echo 2 - Ping Cloudflare
-echo 0 - Voltar
+echo  [1] Ping Google
+echo  [2] Ping Cloudflare
+echo.
+echo  [0] Voltar
 echo.
 
-choice /c 120 /n
+choice /c 120 /n /m "Escolha: "
 
 if errorlevel 3 goto menu
 if errorlevel 2 goto ping_cf
 if errorlevel 1 goto ping_google
-goto testes
+goto test_menu
 
 :ping_google
 ping google.com
 pause
-goto testes
+goto test_menu
 
 :ping_cf
 ping 1.1.1.1
 pause
-goto testes
+goto test_menu
