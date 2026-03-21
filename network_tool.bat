@@ -1,6 +1,6 @@
 @echo off
 title Lynext Optimization
-color 0C
+color 0A
 
 :: =========================
 :: ADMIN
@@ -12,19 +12,42 @@ if %errorLevel% NEQ 0 (
     exit
 )
 
-:menu
-cls
-color 0C
-echo.
+:: =========================
+:: HEADER
+:: =========================
+:header
+color 0B
 echo ============================================
 echo           LYNEXT OPTIMIZATION
 echo        Network ^& System Toolkit
 echo ============================================
+color 0A
+goto :eof
+
+:menu
+cls
+call :header
 echo.
-echo 1 - REDE
-echo 2 - OTIMIZACAO
-echo 3 - TESTES
-echo 0 - SAIR
+
+color 0F
+echo [1] 
+color 0A
+echo  REDE
+
+color 0F
+echo [2] 
+color 0A
+echo  OTIMIZACAO
+
+color 0F
+echo [3] 
+color 0A
+echo  TESTES
+
+color 0F
+echo [0] 
+color 0A
+echo  SAIR
 echo.
 
 choice /c 1230 /n /m "Escolha: "
@@ -40,14 +63,16 @@ goto menu
 :: =========================
 :rede
 cls
+call :header
 echo ===== REDE =====
 echo.
-echo 1 - Renovar IP
-echo 2 - Limpar DNS
-echo 3 - Reset completo
-echo 4 - MTU AUTOMATICO
-echo 5 - DNS AUTOMATICO
-echo 0 - Voltar
+
+color 0F & echo [1] & color 0A & echo  Renovar IP
+color 0F & echo [2] & color 0A & echo  Limpar DNS
+color 0F & echo [3] & color 0A & echo  Reset completo
+color 0F & echo [4] & color 0A & echo  MTU AUTOMATICO
+color 0F & echo [5] & color 0A & echo  DNS AUTOMATICO
+color 0F & echo [0] & color 0A & echo  Voltar
 echo.
 
 choice /c 123450 /n
@@ -82,15 +107,14 @@ goto rede
 :: =========================
 :select_interface
 cls
-echo =====================================
-echo     SELECIONE A INTERFACE DE REDE
-echo =====================================
+call :header
+echo SELECIONE A INTERFACE DE REDE
 echo.
 
 netsh interface ipv4 show interfaces
 
 echo.
-set /p idx=Digite o NUMERO (Idx) da interface: 
+set /p idx=Digite o NUMERO (Idx): 
 
 if "%idx%"=="" (
     echo [ERRO] Entrada invalida
@@ -110,19 +134,17 @@ if "%iface%"=="" (
     goto rede
 )
 
-echo.
 echo Interface escolhida: "%iface%"
 pause
 goto :eof
 
 :: =========================
-:: MTU AUTOMATICO
+:: MTU
 :: =========================
 :mtu
 cls
-echo =====================================
-echo      BUSCANDO MTU IDEAL
-echo =====================================
+call :header
+echo BUSCANDO MTU IDEAL...
 echo.
 
 set target=google.com
@@ -153,13 +175,12 @@ pause
 goto rede
 
 :: =========================
-:: DNS AUTOMATICO
+:: DNS
 :: =========================
 :dns
 cls
-echo =====================================
-echo       TESTE AUTOMATICO DNS
-echo =====================================
+call :header
+echo TESTE AUTOMATICO DNS
 echo.
 
 call :ping 8.8.8.8 g Google
@@ -199,7 +220,7 @@ pause
 goto rede
 
 :: =========================
-:: FUNCAO PING
+:: PING
 :: =========================
 :ping
 set ip=%1
@@ -219,12 +240,14 @@ goto :eof
 :: =========================
 :otim
 cls
-echo ===== OTIMIZACAO =====
+call :header
+echo OTIMIZACAO
 echo.
-echo 1 - Alto desempenho
-echo 2 - SFC
-echo 3 - DISM
-echo 0 - Voltar
+
+color 0F & echo [1] & color 0A & echo  Alto desempenho
+color 0F & echo [2] & color 0A & echo  SFC
+color 0F & echo [3] & color 0A & echo  DISM
+color 0F & echo [0] & color 0A & echo  Voltar
 echo.
 
 choice /c 1230 /n
@@ -255,11 +278,13 @@ goto otim
 :: =========================
 :testes
 cls
-echo ===== TESTES =====
+call :header
+echo TESTES
 echo.
-echo 1 - Ping Google
-echo 2 - Ping Cloudflare
-echo 0 - Voltar
+
+color 0F & echo [1] & color 0A & echo  Ping Google
+color 0F & echo [2] & color 0A & echo  Ping Cloudflare
+color 0F & echo [0] & color 0A & echo  Voltar
 echo.
 
 choice /c 120 /n
