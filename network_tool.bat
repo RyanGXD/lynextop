@@ -1,56 +1,30 @@
 @echo off
 title Lynext Optimization
-color 0A
+setlocal EnableDelayedExpansion
 
-:: =========================
 :: ADMIN
-:: =========================
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
-    echo Elevando privilegios...
     powershell -Command "Start-Process cmd -ArgumentList '/c %~s0' -Verb RunAs"
     exit
 )
 
 :: =========================
-:: HEADER
+:: MENU PRINCIPAL
 :: =========================
-:header
-color 0B
-echo ============================================
-echo           LYNEXT OPTIMIZATION
-echo        Network ^& System Toolkit
-echo ============================================
-color 0A
-goto :eof
-
 :menu
 cls
-call :header
+echo =====================================
+echo         LYNEXT OPTIMIZATION
+echo =====================================
+echo.
+echo 1 - REDE
+echo 2 - OTIMIZACAO
+echo 3 - TESTES
+echo 0 - SAIR
 echo.
 
-color 0F
-echo [1] 
-color 0A
-echo  REDE
-
-color 0F
-echo [2] 
-color 0A
-echo  OTIMIZACAO
-
-color 0F
-echo [3] 
-color 0A
-echo  TESTES
-
-color 0F
-echo [0] 
-color 0A
-echo  SAIR
-echo.
-
-choice /c 1230 /n /m "Escolha: "
+choice /c 1230 /n
 
 if errorlevel 4 exit
 if errorlevel 3 goto testes
@@ -63,23 +37,21 @@ goto menu
 :: =========================
 :rede
 cls
-call :header
 echo ===== REDE =====
 echo.
-
-color 0F & echo [1] & color 0A & echo  Renovar IP
-color 0F & echo [2] & color 0A & echo  Limpar DNS
-color 0F & echo [3] & color 0A & echo  Reset completo
-color 0F & echo [4] & color 0A & echo  MTU AUTOMATICO
-color 0F & echo [5] & color 0A & echo  DNS AUTOMATICO
-color 0F & echo [0] & color 0A & echo  Voltar
+echo 1 - Renovar IP
+echo 2 - Limpar DNS
+echo 3 - Reset completo
+echo 4 - MTU
+echo 5 - DNS AUTOMATICO
+echo 0 - Voltar
 echo.
 
 choice /c 123450 /n
 
 if errorlevel 6 goto menu
 if errorlevel 5 goto dns
-if errorlevel 4 goto mtu
+if errorlevel 4 goto mtu_menu
 if errorlevel 3 goto reset
 if errorlevel 2 goto flush
 if errorlevel 1 goto renovar
@@ -103,84 +75,109 @@ pause
 goto rede
 
 :: =========================
-:: SELECIONAR INTERFACE
+:: MTU MENU
 :: =========================
-:select_interface
+:mtu_menu
 cls
-call :header
-echo SELECIONE A INTERFACE DE REDE
+echo ===== MTU =====
+echo.
+echo 1 - MTU ANALYZER
+echo 2 - MTU ALTERAR
+echo 0 - Voltar
 echo.
 
-netsh interface ipv4 show interfaces
+choice /c 120 /n
+
+if errorlevel 3 goto rede
+if errorlevel 2 goto mtu_set
+if errorlevel 1 goto mtu_analyzer
+goto mtu_menu
+
+:: =========================
+:: MTU ANALYZER
+:: =========================
+:mtu_analyzer
+cls
+echo ===============================
+echo        MTU ANALYZER
+echo ===============================
+echo.
+
+for /f "skip=3 tokens=1,2,3,4,*" %%a in ('netsh interface show interface') do (
+    if /i "%%b"=="Connected" (
+        echo %%e | findstr /i "Loopback" >nul
+        if errorlevel 1 (
+            call :test_mtu "%%e"
+        )
+    )
+)
 
 echo.
-set /p idx=Digite o NUMERO (Idx): 
-
-if "%idx%"=="" (
-    echo [ERRO] Entrada invalida
-    pause
-    goto rede
-)
-
-set iface=
-
-for /f "tokens=1,2,3*" %%a in ('netsh interface ipv4 show interfaces') do (
-    if "%%a"=="%idx%" set iface=%%d
-)
-
-if "%iface%"=="" (
-    echo [ERRO] Interface nao encontrada
-    pause
-    goto rede
-)
-
-echo Interface escolhida: "%iface%"
+echo Analise concluida!
 pause
-goto :eof
+goto mtu_menu
 
 :: =========================
-:: MTU
+:: TESTE DE MTU INDIVIDUAL
 :: =========================
-:mtu
-cls
-call :header
-echo BUSCANDO MTU IDEAL...
-echo.
+:test_mtu
+set iface=%~1
+
+echo -------------------------------
+echo Interface: %iface%
+echo -------------------------------
 
 set target=google.com
 set mtu=1472
 
-:mtu_loop
-echo Testando: %mtu%
+:loop_mtu
 ping %target% -f -l %mtu% -n 1 >nul
 
 if errorlevel 1 (
-    set /a mtu=%mtu%-1
-    goto mtu_loop
+    set /a mtu-=1
+    goto loop_mtu
 )
 
 set /a final=%mtu%+28
 
+echo MTU ideal: %final%
 echo.
-echo MTU IDEAL: %final%
-echo.
 
-call :select_interface
-
-echo Aplicando MTU...
-netsh interface ipv4 set subinterface "%iface%" mtu=%final% store=persistent
-
-echo Concluido!
-pause
-goto rede
+goto :eof
 
 :: =========================
-:: DNS
+:: MTU ALTERAR
+:: =========================
+:mtu_set
+cls
+echo ===============================
+echo        ALTERAR MTU
+echo ===============================
+echo.
+
+echo Interfaces disponiveis:
+netsh interface ipv4 show interfaces
+
+echo.
+set /p iface=Digite o nome da interface: 
+set /p mtu=Digite a MTU desejada: 
+
+echo.
+echo Aplicando...
+
+netsh interface ipv4 set subinterface "%iface%" mtu=%mtu% store=persistent
+
+echo.
+echo Concluido!
+pause
+goto mtu_menu
+
+:: =========================
+:: DNS AUTOMATICO
 :: =========================
 :dns
 cls
-call :header
-echo TESTE AUTOMATICO DNS
+echo ===== TESTE DE DNS =====
 echo.
 
 call :ping 8.8.8.8 g Google
@@ -189,33 +186,28 @@ call :ping 9.9.9.9 q Quad9
 
 echo.
 echo RESULTADOS:
-echo Google:      %g% ms
-echo Cloudflare:  %c% ms
-echo Quad9:       %q% ms
-echo.
+echo Google: %g% ms
+echo Cloudflare: %c% ms
+echo Quad9: %q% ms
 
 set best=8.8.8.8
 set bestv=%g%
 
-if %c% LSS %bestv% (
-    set best=1.1.1.1
-    set bestv=%c%
-)
+if %c% LSS %bestv% (set best=1.1.1.1 & set bestv=%c%)
+if %q% LSS %bestv% (set best=9.9.9.9 & set bestv=%q%)
 
-if %q% LSS %bestv% (
-    set best=9.9.9.9
-    set bestv=%q%
-)
-
-echo Melhor DNS: %best% (%bestv% ms)
 echo.
+echo Melhor DNS: %best%
 
-call :select_interface
+echo.
+echo Aplicando DNS em Ethernet...
+netsh interface ip set dns name="Ethernet" static %best% >nul 2>&1
 
-echo Aplicando DNS...
-netsh interface ip set dns name="%iface%" static %best%
+echo Aplicando DNS em Wi-Fi...
+netsh interface ip set dns name="Wi-Fi" static %best% >nul 2>&1
 
-echo Concluido!
+echo.
+echo DNS aplicado!
 pause
 goto rede
 
@@ -227,7 +219,10 @@ set ip=%1
 set var=%2
 
 set val=999
-for /f "tokens=6 delims== " %%a in ('ping -n 2 %ip% ^| findstr /i "Average Média"') do set val=%%a
+
+for /f "tokens=6 delims== " %%a in ('ping -n 1 %ip% ^| findstr /i "time="') do (
+    set val=%%a
+)
 
 set val=%val:ms=%
 set %var%=%val%
@@ -240,14 +235,12 @@ goto :eof
 :: =========================
 :otim
 cls
-call :header
-echo OTIMIZACAO
+echo ===== OTIMIZACAO =====
 echo.
-
-color 0F & echo [1] & color 0A & echo  Alto desempenho
-color 0F & echo [2] & color 0A & echo  SFC
-color 0F & echo [3] & color 0A & echo  DISM
-color 0F & echo [0] & color 0A & echo  Voltar
+echo 1 - Alto desempenho
+echo 2 - SFC
+echo 3 - DISM
+echo 0 - Voltar
 echo.
 
 choice /c 1230 /n
@@ -278,13 +271,11 @@ goto otim
 :: =========================
 :testes
 cls
-call :header
-echo TESTES
+echo ===== TESTES =====
 echo.
-
-color 0F & echo [1] & color 0A & echo  Ping Google
-color 0F & echo [2] & color 0A & echo  Ping Cloudflare
-color 0F & echo [0] & color 0A & echo  Voltar
+echo 1 - Ping Google
+echo 2 - Ping Cloudflare
+echo 0 - Voltar
 echo.
 
 choice /c 120 /n
