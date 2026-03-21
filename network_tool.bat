@@ -75,7 +75,7 @@ pause
 goto rede
 
 :: =========================
-:: MTU AUTOMATICO (PRECISO)
+:: MTU AUTOMATICO (CORRIGIDO)
 :: =========================
 :mtu
 cls
@@ -102,10 +102,14 @@ echo.
 echo MTU IDEAL: %final%
 echo.
 
-for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set iface=%%i
-set iface=%iface:~1%
+:: detectar interface correta
+for /f "tokens=1,2,3*" %%a in ('netsh interface ipv4 show interfaces ^| findstr /i "connected"') do (
+    set iface=%%d
+)
 
+echo Interface detectada: "%iface%"
 echo Aplicando MTU...
+
 netsh interface ipv4 set subinterface "%iface%" mtu=%final% store=persistent
 
 echo Concluido!
@@ -113,7 +117,7 @@ pause
 goto rede
 
 :: =========================
-:: DNS AUTOMATICO (CORRETO)
+:: DNS AUTOMATICO (CORRIGIDO)
 :: =========================
 :dns
 cls
@@ -149,10 +153,14 @@ if %q% LSS %bestv% (
 echo Melhor DNS: %best% (%bestv% ms)
 echo.
 
-for /f "tokens=2 delims=:" %%i in ('netsh interface show interface ^| findstr /i "Connected"') do set iface=%%i
-set iface=%iface:~1%
+:: detectar interface correta
+for /f "tokens=1,2,3*" %%a in ('netsh interface ipv4 show interfaces ^| findstr /i "connected"') do (
+    set iface=%%d
+)
 
+echo Interface: "%iface%"
 echo Aplicando DNS...
+
 netsh interface ip set dns name="%iface%" static %best%
 
 echo Concluido!
