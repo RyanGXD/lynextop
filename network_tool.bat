@@ -75,28 +75,6 @@ pause
 goto rede
 
 :: =========================
-:: SELECIONAR INTERFACE
-:: =========================
-:select_interface
-cls
-echo =====================================
-echo     SELECIONE A INTERFACE DE REDE
-echo =====================================
-echo.
-
-netsh interface ipv4 show interfaces
-
-echo.
-set /p iface="Digite o nome EXATO da interface: "
-
-if "%iface%"=="" goto select_interface
-
-echo.
-echo Interface escolhida: "%iface%"
-pause
-goto :eof
-
-:: =========================
 :: MTU AUTOMATICO
 :: =========================
 :mtu
@@ -124,7 +102,27 @@ echo.
 echo MTU IDEAL: %final%
 echo.
 
-call :select_interface
+:: =========================
+:: ESCOLHER INTERFACE
+:: =========================
+echo =====================================
+echo     SELECIONE A INTERFACE DE REDE
+echo =====================================
+echo.
+
+netsh interface ipv4 show interfaces
+
+echo.
+set /p iface=Digite o nome EXATO da interface: 
+
+if "%iface%"=="" (
+    echo [ERRO] Interface invalida
+    pause
+    goto rede
+)
+
+echo.
+echo Interface escolhida: "%iface%"
 
 echo Aplicando MTU...
 netsh interface ipv4 set subinterface "%iface%" mtu=%final% store=persistent
@@ -170,7 +168,27 @@ if %q% LSS %bestv% (
 echo Melhor DNS: %best% (%bestv% ms)
 echo.
 
-call :select_interface
+:: =========================
+:: ESCOLHER INTERFACE
+:: =========================
+echo =====================================
+echo     SELECIONE A INTERFACE DE REDE
+echo =====================================
+echo.
+
+netsh interface ipv4 show interfaces
+
+echo.
+set /p iface=Digite o nome EXATO da interface: 
+
+if "%iface%"=="" (
+    echo [ERRO] Interface invalida
+    pause
+    goto rede
+)
+
+echo.
+echo Interface escolhida: "%iface%"
 
 echo Aplicando DNS...
 netsh interface ip set dns name="%iface%" static %best%
