@@ -1,35 +1,34 @@
+# Lynext Network Tool PRO - Installer
+
+Write-Host ""
 Write-Host "================================="
 Write-Host "   Lynext Network Tool PRO"
 Write-Host "================================="
 Write-Host ""
 
-# Caminho temporario
-$destino = "$env:TEMP\lynext.bat"
+# URL do seu .bat
+$u = "https://raw.githubusercontent.com/RyanGXD/lynextop/main/network_tool.bat"
 
-Write-Host "[+] Preparando download..."
-
-# URL correta do seu GitHub
-$url = "https://raw.githubusercontent.com/RyanGXD/lynextop/main/network_tool.bat"
+# Caminho temporário
+$d = "$env:TEMP\lynext.bat"
 
 try {
     Write-Host "[+] Baixando ferramenta..."
-    Invoke-WebRequest -Uri $url -OutFile $destino -UseBasicParsing
+    
+    Invoke-WebRequest $u -OutFile $d -UseBasicParsing
 
-    if (Test-Path $destino) {
-        Write-Host "[+] Download concluido com sucesso!"
-        Write-Host ""
-
+    if (Test-Path $d) {
+        Write-Host "[OK] Download concluido!"
         Write-Host "[+] Executando como administrador..."
-        Start-Process -FilePath $destino -Verb RunAs
+        
+        Start-Process $d -Verb RunAs
     }
     else {
-        Write-Host "[ERRO] Arquivo nao foi baixado."
+        Write-Host "[ERRO] Falha ao salvar o arquivo."
     }
 }
 catch {
-    Write-Host "[ERRO] Falha ao baixar o arquivo."
-    Write-Host "Verifique o link do GitHub."
+    Write-Host "[ERRO] Falha no download ou execucao."
 }
 
 Write-Host ""
-Write-Host "Finalizado."
