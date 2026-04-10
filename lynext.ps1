@@ -1,5 +1,2 @@
-$bat = "$env:TEMP\lynext.bat"
-
-Invoke-WebRequest "https://raw.githubusercontent.com/SEU-USUARIO/SEU-REPO/main/lynext.bat" -OutFile $bat
-
+$bat = Join-Path $PSScriptRoot "network_tool.bat"
 Start-Process $bat -Verb RunAs
