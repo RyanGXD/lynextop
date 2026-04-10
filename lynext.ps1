@@ -1,34 +1,25 @@
-# Lynext Network Tool PRO - Installer
+# Lynext Installer
 
-Write-Host ""
-Write-Host "================================="
-Write-Host "   Lynext Network Tool PRO"
-Write-Host "================================="
-Write-Host ""
-
-# URL do seu .bat
 $u = "https://raw.githubusercontent.com/RyanGXD/lynextop/main/network_tool.bat"
-
-# Caminho temporário
 $d = "$env:TEMP\lynext.bat"
 
+# Bypass temporário (evita bloqueio)
+Set-ExecutionPolicy Bypass -Scope Process -Force
+
 try {
-    Write-Host "[+] Baixando ferramenta..."
+    Write-Host "[+] Baixando Lynext..."
     
-    Invoke-WebRequest $u -OutFile $d -UseBasicParsing
+    Invoke-WebRequest $u -OutFile $d
 
     if (Test-Path $d) {
-        Write-Host "[OK] Download concluido!"
-        Write-Host "[+] Executando como administrador..."
-        
-        Start-Process $d -Verb RunAs
+        Write-Host "[OK] Executando..."
+
+        Start-Process "cmd.exe" -ArgumentList "/c `"$d`"" -Verb RunAs
     }
     else {
-        Write-Host "[ERRO] Falha ao salvar o arquivo."
+        Write-Host "[ERRO] Download falhou."
     }
 }
 catch {
-    Write-Host "[ERRO] Falha no download ou execucao."
+    Write-Host "[ERRO] Falha geral."
 }
-
-Write-Host ""
