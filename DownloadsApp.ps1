@@ -12,24 +12,24 @@ $downloadsAtivos = @{}
 # =========================
 # CORES
 # =========================
-$bgMain      = [System.Drawing.Color]::FromArgb(14,14,14)
-$bgPanel     = [System.Drawing.Color]::FromArgb(24,24,24)
-$bgPanel2    = [System.Drawing.Color]::FromArgb(30,30,30)
-$bgButton    = [System.Drawing.Color]::FromArgb(42,42,42)
+$bgMain      = [System.Drawing.Color]::FromArgb(12,12,12)
+$bgPanel     = [System.Drawing.Color]::FromArgb(22,22,22)
+$bgButton    = [System.Drawing.Color]::FromArgb(35,35,35)
 $bgButton2   = [System.Drawing.Color]::FromArgb(55,55,55)
 $fgMain      = [System.Drawing.Color]::FromArgb(235,235,235)
-$fgSoft      = [System.Drawing.Color]::FromArgb(170,170,170)
+$fgSoft      = [System.Drawing.Color]::FromArgb(160,160,160)
 $okColor     = [System.Drawing.Color]::FromArgb(110,220,140)
 $errColor    = [System.Drawing.Color]::FromArgb(255,110,110)
 $runColor    = [System.Drawing.Color]::FromArgb(255,190,80)
 $manualColor = [System.Drawing.Color]::FromArgb(90,180,255)
-$borderColor = [System.Drawing.Color]::FromArgb(55,55,55)
+$borderColor = [System.Drawing.Color]::FromArgb(60,60,60)
 
 # =========================
 # FUNCOES
 # =========================
 function Garantir-Pasta {
     param([string]$Pasta)
+
     if (!(Test-Path $Pasta)) {
         New-Item -ItemType Directory -Path $Pasta -Force | Out-Null
     }
@@ -42,7 +42,7 @@ function Criar-Label {
         [int]$Y,
         [int]$Tamanho = 10,
         [bool]$Negrito = $false,
-        [System.Drawing.Color]$Cor = $null
+        $Cor = $null
     )
 
     $lbl = New-Object System.Windows.Forms.Label
@@ -50,15 +50,18 @@ function Criar-Label {
     $lbl.AutoSize = $true
     $lbl.Location = New-Object System.Drawing.Point($X, $Y)
     $lbl.BackColor = [System.Drawing.Color]::Transparent
+
     if ($Negrito) {
         $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho, [System.Drawing.FontStyle]::Bold)
-    } else {
+    }
+    else {
         $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho)
     }
 
-    if ($Cor) {
+    if ($null -ne $Cor) {
         $lbl.ForeColor = $Cor
-    } else {
+    }
+    else {
         $lbl.ForeColor = $fgMain
     }
 
@@ -167,12 +170,12 @@ catch {
 
         Set-Status $StatusLabel "Baixando..." "andando"
         $GeralLabel.Text = "Baixando $Nome..."
-        $Barra.Style = "Marquee"
+        $Barra.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
     }
     catch {
         Set-Status $StatusLabel "Erro [X]" "erro"
         $GeralLabel.Text = "Falha ao iniciar $Nome."
-        $Barra.Style = "Blocks"
+        $Barra.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
     }
 }
 
@@ -193,7 +196,7 @@ $form.ForeColor = $fgMain
 $titulo = Criar-Label "Central de Downloads" 225 18 16 $true
 $form.Controls.Add($titulo)
 
-$subtitulo = Criar-Label "Dark mode, download automatico separado do manual" 175 48 9 $false $fgSoft
+$subtitulo = Criar-Label "Automatico separado do manual, com visual dark" 190 48 9 $false $fgSoft
 $form.Controls.Add($subtitulo)
 
 # =========================
@@ -203,30 +206,24 @@ $panelAuto = Criar-Painel 28 90 630 140
 $form.Controls.Add($panelAuto)
 
 $autoTitulo = Criar-Label "AUTOMATICO" 18 14 11 $true
-$autoTitulo.Parent = $panelAuto
 $panelAuto.Controls.Add($autoTitulo)
 
 $autoSub = Criar-Label "Baixa direto para Downloads\Instaladores" 18 38 9 $false $fgSoft
-$autoSub.Parent = $panelAuto
 $panelAuto.Controls.Add($autoSub)
 
 $chromeNome = Criar-Label "Chrome" 18 78 10 $false
-$chromeNome.Parent = $panelAuto
 $panelAuto.Controls.Add($chromeNome)
 
 $chromeStatus = Criar-Label "Aguardando" 280 78 10 $false $fgSoft
-$chromeStatus.Parent = $panelAuto
 $panelAuto.Controls.Add($chromeStatus)
 
 $btnChrome = Criar-Botao "Baixar" 485 72 110 32
 $panelAuto.Controls.Add($btnChrome)
 
 $anydeskNome = Criar-Label "AnyDesk" 18 108 10 $false
-$anydeskNome.Parent = $panelAuto
 $panelAuto.Controls.Add($anydeskNome)
 
 $anydeskStatus = Criar-Label "Aguardando" 280 108 10 $false $fgSoft
-$anydeskStatus.Parent = $panelAuto
 $panelAuto.Controls.Add($anydeskStatus)
 
 $btnAnyDesk = Criar-Botao "Baixar" 485 102 110 32
@@ -239,30 +236,24 @@ $panelManual = Criar-Painel 28 245 630 140
 $form.Controls.Add($panelManual)
 
 $manualTitulo = Criar-Label "MANUAL" 18 14 11 $true
-$manualTitulo.Parent = $panelManual
 $panelManual.Controls.Add($manualTitulo)
 
 $manualSub = Criar-Label "Abre a pagina oficial para baixar manualmente" 18 38 9 $false $fgSoft
-$manualSub.Parent = $panelManual
 $panelManual.Controls.Add($manualSub)
 
 $javaNome = Criar-Label "Java" 18 78 10 $false
-$javaNome.Parent = $panelManual
 $panelManual.Controls.Add($javaNome)
 
 $javaStatus = Criar-Label "Aguardando" 280 78 10 $false $fgSoft
-$javaStatus.Parent = $panelManual
 $panelManual.Controls.Add($javaStatus)
 
 $btnJava = Criar-Botao "Abrir pagina" 455 72 140 32
 $panelManual.Controls.Add($btnJava)
 
 $adobeNome = Criar-Label "Adobe Reader" 18 108 10 $false
-$adobeNome.Parent = $panelManual
 $panelManual.Controls.Add($adobeNome)
 
 $adobeStatus = Criar-Label "Aguardando" 280 108 10 $false $fgSoft
-$adobeStatus.Parent = $panelManual
 $panelManual.Controls.Add($adobeStatus)
 
 $btnAdobe = Criar-Botao "Abrir pagina" 455 102 140 32
