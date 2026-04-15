@@ -1,21 +1,41 @@
-$menuUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main/MainMenu.ps1"
-$menuPath = "$env:TEMP\MainMenu.ps1"
+$baseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
+$installDir = Join-Path $env:TEMP "Lynext"
+
+$files = @(
+    "MainMenu.ps1",
+    "DownloadsApp.ps1",
+    "NetworkApp.ps1",
+    "PerformanceApp.ps1"
+)
 
 Write-Host "Baixando Lynext..."
 Write-Host ""
 
 try {
-    Invoke-WebRequest -Uri $menuUrl -OutFile $menuPath -UseBasicParsing
+    if (!(Test-Path $installDir)) {
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }
 
-    if (Test-Path $menuPath) {
+    foreach ($file in $files) {
+        $url = "$baseUrl/$file"
+        $dest = Join-Path $installDir $file
+
+        Write-Host "Baixando $file ..."
+        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+    }
+
+    $mainMenu = Join-Path $installDir "MainMenu.ps1"
+
+    if (Test-Path $mainMenu) {
+        Write-Host ""
         Write-Host "Download concluido com sucesso!"
         Write-Host "Executando Lynext..."
         Write-Host ""
 
-        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$menuPath`"" -Verb RunAs
+        Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$mainMenu`""
     }
     else {
-        Write-Host "Erro: arquivo nao foi baixado."
+        Write-Host "Erro: MainMenu.ps1 nao foi encontrado."
     }
 }
 catch {
