@@ -1,325 +1,258 @@
-@echo off
-setlocal EnableExtensions
-title Lynext Network Tool PRO
-color 0A
-mode con: cols=70 lines=28
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-:: =========================
-:: ADMIN
-:: =========================
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    cls
-    echo.
-    echo [!] Elevando privilegios...
-    timeout /t 2 >nul
-    powershell -Command "Start-Process '%ComSpec%' -ArgumentList '/c ""%~f0""' -Verb RunAs"
-    exit /b
-)
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
-:: =========================
-:: VARIAVEIS GLOBAIS
-:: =========================
-set "LOG=%temp%\lynext_log.txt"
-set "PS_APP=%temp%\DownloadsApp.ps1"
-set "PS_URL=https://raw.githubusercontent.com/RyanGXD/lynextop/main/DownloadsApp.ps1"
+# =========================
+# CONFIG
+# =========================
+$baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-:menu
-cls
-echo.
-echo ======================================================
-echo                    L Y N E X T
-echo              Network Tool PRO - v1.0
-echo ======================================================
-echo.
-echo  [1] REDE
-echo  [2] OTIMIZACAO
-echo  [3] TESTES
-echo  [4] COMPETITIVO
-echo  [5] INFORMACOES
-echo  [6] DOWNLOADS
-echo.
-echo  [0] SAIR
-echo.
+# Arquivos dos modulos
+$modules = @{
+    "Rede"        = "NetworkApp.ps1"
+    "Desempenho"  = "PerformanceApp.ps1"
+    "Downloads"   = "DownloadsApp.ps1"
+}
 
-choice /c 1234560 /n /m "Escolha uma opcao: "
+# =========================
+# CORES
+# =========================
+$bgMain        = [System.Drawing.Color]::FromArgb(10,10,10)
+$bgCard        = [System.Drawing.Color]::FromArgb(20,20,20)
+$bgButton      = [System.Drawing.Color]::FromArgb(30,30,30)
+$bgButtonHover = [System.Drawing.Color]::FromArgb(45,45,45)
+$bgButtonDown  = [System.Drawing.Color]::FromArgb(60,60,60)
+$fgMain        = [System.Drawing.Color]::FromArgb(235,235,235)
+$fgSoft        = [System.Drawing.Color]::FromArgb(150,150,150)
+$accent        = [System.Drawing.Color]::FromArgb(85,255,140)
+$warnColor     = [System.Drawing.Color]::FromArgb(255,190,80)
+$errorColor    = [System.Drawing.Color]::FromArgb(255,110,110)
+$borderColor   = [System.Drawing.Color]::FromArgb(55,55,55)
 
-if errorlevel 7 goto sair
-if errorlevel 6 goto downloads
-if errorlevel 5 goto informacoes
-if errorlevel 4 goto competitivo
-if errorlevel 3 goto testes
-if errorlevel 2 goto otimizacao
-if errorlevel 1 goto rede
+# =========================
+# FUNCOES
+# =========================
+function Criar-Label {
+    param(
+        [string]$Texto,
+        [int]$X,
+        [int]$Y,
+        [int]$Tamanho = 10,
+        [bool]$Negrito = $false,
+        $Cor = $null
+    )
 
-:: =========================
-:: MENU REDE
-:: =========================
-:rede
-cls
-echo.
-echo ======================================================
-echo                         REDE
-echo ======================================================
-echo.
-echo  [1] Flush DNS
-echo  [2] Reset Winsock
-echo  [3] Reset IP
-echo  [4] Reset Firewall
-echo  [5] Limpeza completa de rede
-echo.
-echo  [0] Voltar
-echo.
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $Texto
+    $lbl.AutoSize = $true
+    $lbl.Location = New-Object System.Drawing.Point($X, $Y)
+    $lbl.BackColor = [System.Drawing.Color]::Transparent
 
-choice /c 123450 /n /m "Escolha uma opcao: "
+    if ($Negrito) {
+        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho, [System.Drawing.FontStyle]::Bold)
+    }
+    else {
+        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho)
+    }
 
-if errorlevel 6 goto menu
-if errorlevel 5 goto rede_completa
-if errorlevel 4 goto rede_firewall
-if errorlevel 3 goto rede_ip
-if errorlevel 2 goto rede_winsock
-if errorlevel 1 goto rede_flushdns
+    if ($null -ne $Cor) {
+        $lbl.ForeColor = $Cor
+    }
+    else {
+        $lbl.ForeColor = $fgMain
+    }
 
-:rede_flushdns
-cls
-echo Executando Flush DNS...
-ipconfig /flushdns
-echo [%date% %time%] Flush DNS executado>>"%LOG%"
-pause
-goto rede
+    return $lbl
+}
 
-:rede_winsock
-cls
-echo Executando reset do Winsock...
-netsh winsock reset
-echo [%date% %time%] Reset Winsock executado>>"%LOG%"
-pause
-goto rede
+function Criar-Botao {
+    param(
+        [string]$Texto,
+        [int]$X,
+        [int]$Y,
+        [int]$Largura = 180,
+        [int]$Altura = 58
+    )
 
-:rede_ip
-cls
-echo Executando reset de IP...
-netsh int ip reset
-echo [%date% %time%] Reset IP executado>>"%LOG%"
-pause
-goto rede
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Text = $Texto
+    $btn.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $btn.Location = New-Object System.Drawing.Point($X, $Y)
+    $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btn.UseVisualStyleBackColor = $false
+    $btn.BackColor = $bgButton
+    $btn.ForeColor = $fgMain
+    $btn.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $btn.FlatAppearance.BorderSize = 1
+    $btn.FlatAppearance.BorderColor = $borderColor
+    $btn.FlatAppearance.MouseOverBackColor = $bgButtonHover
+    $btn.FlatAppearance.MouseDownBackColor = $bgButtonDown
+    $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+    return $btn
+}
 
-:rede_firewall
-cls
-echo Executando reset do Firewall...
-netsh advfirewall reset
-echo [%date% %time%] Reset Firewall executado>>"%LOG%"
-pause
-goto rede
+function Criar-Painel {
+    param(
+        [int]$X,
+        [int]$Y,
+        [int]$Largura,
+        [int]$Altura,
+        $Cor = $null
+    )
 
-:rede_completa
-cls
-echo Executando limpeza completa de rede...
-ipconfig /flushdns
-ipconfig /release
-ipconfig /renew
-netsh winsock reset
-netsh int ip reset
-netsh advfirewall reset
-nbtstat -R
-nbtstat -RR
-netsh interface ip delete arpcache
-echo [%date% %time%] Limpeza completa de rede executada>>"%LOG%"
-pause
-goto rede
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Location = New-Object System.Drawing.Point($X, $Y)
+    $panel.Size = New-Object System.Drawing.Size($Largura, $Altura)
 
-:: =========================
-:: MENU OTIMIZACAO
-:: =========================
-:otimizacao
-cls
-echo.
-echo ======================================================
-echo                     OTIMIZACAO
-echo ======================================================
-echo.
-echo  [1] SFC Scannow
-echo  [2] DISM RestoreHealth
-echo  [3] Plano Alto Desempenho
-echo.
-echo  [0] Voltar
-echo.
+    if ($null -ne $Cor) {
+        $panel.BackColor = $Cor
+    }
+    else {
+        $panel.BackColor = $bgCard
+    }
 
-choice /c 1230 /n /m "Escolha uma opcao: "
+    return $panel
+}
 
-if errorlevel 4 goto menu
-if errorlevel 3 goto plano_alto
-if errorlevel 2 goto dism
-if errorlevel 1 goto sfc
+function Abrir-Modulo {
+    param(
+        [string]$NomeModulo
+    )
 
-:sfc
-cls
-echo Executando SFC...
-sfc /scannow
-echo [%date% %time%] SFC executado>>"%LOG%"
-pause
-goto otimizacao
+    if (-not $modules.ContainsKey($NomeModulo)) {
+        $script:statusLabel.Text = "Modulo invalido."
+        $script:statusLabel.ForeColor = $errorColor
+        return
+    }
 
-:dism
-cls
-echo Executando DISM...
-DISM /Online /Cleanup-Image /RestoreHealth
-echo [%date% %time%] DISM executado>>"%LOG%"
-pause
-goto otimizacao
+    $arquivo = $modules[$NomeModulo]
+    $caminho = Join-Path $baseDir $arquivo
 
-:plano_alto
-cls
-echo Ativando plano Alto Desempenho...
-powercfg -setactive SCHEME_MIN
-echo [%date% %time%] Plano Alto Desempenho ativado>>"%LOG%"
-pause
-goto otimizacao
+    if (!(Test-Path $caminho)) {
+        $script:statusLabel.Text = "$arquivo nao foi encontrado."
+        $script:statusLabel.ForeColor = $warnColor
+        return
+    }
 
-:: =========================
-:: MENU TESTES
-:: =========================
-:testes
-cls
-echo.
-echo ======================================================
-echo                        TESTES
-echo ======================================================
-echo.
-echo  [1] Ping Google
-echo  [2] IPConfig
-echo.
-echo  [0] Voltar
-echo.
+    try {
+        $script:statusLabel.Text = "Abrindo $NomeModulo..."
+        $script:statusLabel.ForeColor = $accent
+        $form.Refresh()
 
-choice /c 120 /n /m "Escolha uma opcao: "
+        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$caminho`""
+        
+        Start-Sleep -Milliseconds 200
 
-if errorlevel 3 goto menu
-if errorlevel 2 goto ver_ip
-if errorlevel 1 goto ping_google
+        $script:statusLabel.Text = "Pronto."
+        $script:statusLabel.ForeColor = $fgSoft
+    }
+    catch {
+        $script:statusLabel.Text = "Falha ao abrir $NomeModulo."
+        $script:statusLabel.ForeColor = $errorColor
+    }
+}
 
-:ping_google
-cls
-ping google.com
-echo [%date% %time%] Ping Google executado>>"%LOG%"
-pause
-goto testes
+# =========================
+# FORM
+# =========================
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Lynext"
+$form.Size = New-Object System.Drawing.Size(760, 520)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+$form.MaximizeBox = $false
+$form.MinimizeBox = $true
+$form.BackColor = $bgMain
+$form.ForeColor = $fgMain
+$form.Topmost = $false
 
-:ver_ip
-cls
-ipconfig /all
-echo [%date% %time%] IPConfig executado>>"%LOG%"
-pause
-goto testes
+# =========================
+# TOPO
+# =========================
+$titulo = Criar-Label "Lynext" 320 24 24 $true
+$form.Controls.Add($titulo)
 
-:: =========================
-:: MENU COMPETITIVO
-:: =========================
-:competitivo
-cls
-echo.
-echo ======================================================
-echo                     COMPETITIVO
-echo ======================================================
-echo.
-echo  [1] TCP Global
-echo  [2] Mostrar configuracoes TCP
-echo.
-echo  [0] Voltar
-echo.
+$linha = New-Object System.Windows.Forms.Panel
+$linha.Location = New-Object System.Drawing.Point(245, 66)
+$linha.Size = New-Object System.Drawing.Size(260, 2)
+$linha.BackColor = $accent
+$form.Controls.Add($linha)
 
-choice /c 120 /n /m "Escolha uma opcao: "
+$subtitulo = Criar-Label "Central principal de modulos" 273 78 10 $false $fgSoft
+$form.Controls.Add($subtitulo)
 
-if errorlevel 3 goto menu
-if errorlevel 2 goto mostrar_tcp
-if errorlevel 1 goto tcp_global
+# =========================
+# CARD CENTRAL
+# =========================
+$card = Criar-Painel 45 120 650 280
+$form.Controls.Add($card)
 
-:tcp_global
-cls
-echo Aplicando ajuste TCP global...
-netsh int tcp set global autotuninglevel=normal
-netsh int tcp set global rss=enabled
-netsh int tcp set global chimney=enabled
-echo [%date% %time%] Ajustes TCP globais aplicados>>"%LOG%"
-pause
-goto competitivo
+$cardTitulo = Criar-Label "MENU PRINCIPAL" 25 22 12 $true
+$card.Controls.Add($cardTitulo)
 
-:mostrar_tcp
-cls
-netsh int tcp show global
-echo [%date% %time%] Configuracoes TCP exibidas>>"%LOG%"
-pause
-goto competitivo
+$cardSub = Criar-Label "Escolha um modulo para abrir" 25 48 9 $false $fgSoft
+$card.Controls.Add($cardSub)
 
-:: =========================
-:: MENU INFORMACOES
-:: =========================
-:informacoes
-cls
-echo.
-echo ======================================================
-echo                     INFORMACOES
-echo ======================================================
-echo.
-echo  [1] Ver log
-echo  [2] Informacoes do sistema
-echo.
-echo  [0] Voltar
-echo.
+# =========================
+# BOTOES
+# =========================
+$btnRede = Criar-Botao "REDE" 25 90 180 56
+$card.Controls.Add($btnRede)
 
-choice /c 120 /n /m "Escolha uma opcao: "
+$btnDesempenho = Criar-Botao "DESEMPENHO" 235 90 180 56
+$card.Controls.Add($btnDesempenho)
 
-if errorlevel 3 goto menu
-if errorlevel 2 goto infos_sistema
-if errorlevel 1 goto ver_log
+$btnDownloads = Criar-Botao "DOWNLOADS" 445 90 180 56
+$card.Controls.Add($btnDownloads)
 
-:ver_log
-cls
-if exist "%LOG%" (
-    type "%LOG%"
-) else (
-    echo Nenhum log encontrado.
-)
-pause
-goto informacoes
+$btnSair = Criar-Botao "SAIR" 235 170 180 56
+$card.Controls.Add($btnSair)
 
-:infos_sistema
-cls
-systeminfo
-pause
-goto informacoes
+# =========================
+# RODAPE
+# =========================
+$statusBox = Criar-Painel 45 420 650 48 ([System.Drawing.Color]::FromArgb(16,16,16))
+$form.Controls.Add($statusBox)
 
-:: =========================
-:: DOWNLOADS
-:: =========================
-:downloads
-cls
-echo.
-echo ======================================================
-echo                      DOWNLOADS
-echo ======================================================
-echo.
-echo Baixando central de downloads...
-echo.
+$statusTitulo = Criar-Label "STATUS" 18 15 9 $true
+$statusBox.Controls.Add($statusTitulo)
 
-del /f /q "%PS_APP%" >nul 2>&1
+$statusLabel = Criar-Label "Pronto." 80 15 9 $false $fgSoft
+$statusBox.Controls.Add($statusLabel)
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri '%PS_URL%' -OutFile '%PS_APP%' -UseBasicParsing } catch { exit 1 }"
+$creditos = Criar-Label "Created by Ryan" 323 478 9 $false $fgSoft
+$form.Controls.Add($creditos)
 
-if not exist "%PS_APP%" (
-    echo [X] Falha ao baixar o DownloadsApp.ps1
-    echo.
-    echo Verifique se o arquivo existe no GitHub:
-    echo %PS_URL%
-    echo.
-    pause
-    goto menu
-)
+# =========================
+# EVENTOS
+# =========================
+$btnRede.Add_Click({
+    Abrir-Modulo -NomeModulo "Rede"
+})
 
-echo Abrindo central de downloads...
-echo [%date% %time%] Central de downloads aberta>>"%LOG%"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_APP%"
-goto menu
+$btnDesempenho.Add_Click({
+    Abrir-Modulo -NomeModulo "Desempenho"
+})
 
-:sair
-exit /b
+$btnDownloads.Add_Click({
+    Abrir-Modulo -NomeModulo "Downloads"
+})
+
+$btnSair.Add_Click({
+    $form.Close()
+})
+
+foreach ($btn in @($btnRede, $btnDesempenho, $btnDownloads, $btnSair)) {
+    $btn.Add_MouseEnter({
+        $statusLabel.Text = "Selecionado: $($this.Text)"
+        $statusLabel.ForeColor = $accent
+    })
+
+    $btn.Add_MouseLeave({
+        $statusLabel.Text = "Pronto."
+        $statusLabel.ForeColor = $fgSoft
+    })
+}
+
+[void]$form.ShowDialog()
