@@ -8,7 +8,9 @@ $files = @(
     "PerformanceApp.ps1"
 )
 
-Write-Host "Baixando Lynext..."
+Write-Host "====================================="
+Write-Host "            LYNEXT LOADER"
+Write-Host "====================================="
 Write-Host ""
 
 try {
@@ -29,10 +31,10 @@ try {
     if (Test-Path $mainMenu) {
         Write-Host ""
         Write-Host "Download concluido com sucesso!"
-        Write-Host "Executando Lynext..."
+        Write-Host "Abrindo MainMenu.ps1..."
         Write-Host ""
 
-        Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$mainMenu`""
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File $mainMenu
     }
     else {
         Write-Host "Erro: MainMenu.ps1 nao foi encontrado."
@@ -40,8 +42,9 @@ try {
 }
 catch {
     Write-Host ""
-    Write-Host "Erro ao baixar Lynext:"
+    Write-Host "Erro ao baixar ou executar Lynext:"
     Write-Host $_.Exception.Message
 }
 
+Write-Host ""
 Pause
