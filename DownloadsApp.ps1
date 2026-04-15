@@ -7,28 +7,103 @@ Add-Type -AssemblyName System.Drawing
 # CONFIG
 # =========================
 $destinoBase = Join-Path $env:USERPROFILE "Downloads\Instaladores"
-
 $downloadsAtivos = @{}
 
 # =========================
 # CORES
 # =========================
-$corFundo      = [System.Drawing.Color]::FromArgb(18,18,18)
-$corPainel     = [System.Drawing.Color]::FromArgb(28,28,28)
-$corTexto      = [System.Drawing.Color]::FromArgb(230,230,230)
-$corTextoSoft  = [System.Drawing.Color]::FromArgb(170,170,170)
-$corBotao      = [System.Drawing.Color]::FromArgb(40,40,40)
-$corBorda      = [System.Drawing.Color]::FromArgb(55,55,55)
+$bgMain      = [System.Drawing.Color]::FromArgb(14,14,14)
+$bgPanel     = [System.Drawing.Color]::FromArgb(24,24,24)
+$bgPanel2    = [System.Drawing.Color]::FromArgb(30,30,30)
+$bgButton    = [System.Drawing.Color]::FromArgb(42,42,42)
+$bgButton2   = [System.Drawing.Color]::FromArgb(55,55,55)
+$fgMain      = [System.Drawing.Color]::FromArgb(235,235,235)
+$fgSoft      = [System.Drawing.Color]::FromArgb(170,170,170)
+$okColor     = [System.Drawing.Color]::FromArgb(110,220,140)
+$errColor    = [System.Drawing.Color]::FromArgb(255,110,110)
+$runColor    = [System.Drawing.Color]::FromArgb(255,190,80)
+$manualColor = [System.Drawing.Color]::FromArgb(90,180,255)
+$borderColor = [System.Drawing.Color]::FromArgb(55,55,55)
 
 # =========================
 # FUNCOES
 # =========================
 function Garantir-Pasta {
     param([string]$Pasta)
-
     if (!(Test-Path $Pasta)) {
         New-Item -ItemType Directory -Path $Pasta -Force | Out-Null
     }
+}
+
+function Criar-Label {
+    param(
+        [string]$Texto,
+        [int]$X,
+        [int]$Y,
+        [int]$Tamanho = 10,
+        [bool]$Negrito = $false,
+        [System.Drawing.Color]$Cor = $null
+    )
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $Texto
+    $lbl.AutoSize = $true
+    $lbl.Location = New-Object System.Drawing.Point($X, $Y)
+    $lbl.BackColor = [System.Drawing.Color]::Transparent
+    if ($Negrito) {
+        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho, [System.Drawing.FontStyle]::Bold)
+    } else {
+        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho)
+    }
+
+    if ($Cor) {
+        $lbl.ForeColor = $Cor
+    } else {
+        $lbl.ForeColor = $fgMain
+    }
+
+    return $lbl
+}
+
+function Criar-Botao {
+    param(
+        [string]$Texto,
+        [int]$X,
+        [int]$Y,
+        [int]$Largura = 120,
+        [int]$Altura = 32
+    )
+
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Text = $Texto
+    $btn.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $btn.Location = New-Object System.Drawing.Point($X, $Y)
+    $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btn.UseVisualStyleBackColor = $false
+    $btn.BackColor = $bgButton
+    $btn.ForeColor = $fgMain
+    $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $btn.FlatAppearance.BorderSize = 1
+    $btn.FlatAppearance.BorderColor = $borderColor
+    $btn.FlatAppearance.MouseOverBackColor = $bgButton2
+    $btn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(70,70,70)
+    $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+    return $btn
+}
+
+function Criar-Painel {
+    param(
+        [int]$X,
+        [int]$Y,
+        [int]$Largura,
+        [int]$Altura
+    )
+
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Location = New-Object System.Drawing.Point($X, $Y)
+    $panel.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $panel.BackColor = $bgPanel
+    return $panel
 }
 
 function Set-Status {
@@ -41,64 +116,12 @@ function Set-Status {
     $Label.Text = $Texto
 
     switch ($Tipo) {
-        "ok"      { $Label.ForeColor = [System.Drawing.Color]::LightGreen }
-        "erro"    { $Label.ForeColor = [System.Drawing.Color]::Tomato }
-        "andando" { $Label.ForeColor = [System.Drawing.Color]::Orange }
-        "manual"  { $Label.ForeColor = [System.Drawing.Color]::DeepSkyBlue }
-        default   { $Label.ForeColor = $corTextoSoft }
+        "ok"      { $Label.ForeColor = $okColor }
+        "erro"    { $Label.ForeColor = $errColor }
+        "andando" { $Label.ForeColor = $runColor }
+        "manual"  { $Label.ForeColor = $manualColor }
+        default   { $Label.ForeColor = $fgSoft }
     }
-}
-
-function Novo-Label {
-    param(
-        [string]$Texto,
-        [int]$X,
-        [int]$Y,
-        [int]$Tamanho = 10,
-        [bool]$Negrito = $false,
-        [System.Drawing.Color]$Cor = $null
-    )
-
-    $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = $Texto
-    if ($Negrito) {
-        $lbl.Font = New-Object System.Drawing.Font("Segoe UI",$Tamanho,[System.Drawing.FontStyle]::Bold)
-    }
-    else {
-        $lbl.Font = New-Object System.Drawing.Font("Segoe UI",$Tamanho)
-    }
-    $lbl.AutoSize = $true
-    $lbl.Location = New-Object System.Drawing.Point($X,$Y)
-    if ($Cor -ne $null) {
-        $lbl.ForeColor = $Cor
-    }
-    else {
-        $lbl.ForeColor = $corTexto
-    }
-    $lbl.BackColor = [System.Drawing.Color]::Transparent
-    return $lbl
-}
-
-function Novo-Botao {
-    param(
-        [string]$Texto,
-        [int]$X,
-        [int]$Y,
-        [int]$Largura = 110,
-        [int]$Altura = 30
-    )
-
-    $btn = New-Object System.Windows.Forms.Button
-    $btn.Text = $Texto
-    $btn.Size = New-Object System.Drawing.Size($Largura,$Altura)
-    $btn.Location = New-Object System.Drawing.Point($X,$Y)
-    $btn.FlatStyle = "Flat"
-    $btn.BackColor = $corBotao
-    $btn.ForeColor = $corTexto
-    $btn.FlatAppearance.BorderColor = $corBorda
-    $btn.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(55,55,55)
-    $btn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(70,70,70)
-    return $btn
 }
 
 function Iniciar-DownloadExterno {
@@ -107,7 +130,7 @@ function Iniciar-DownloadExterno {
         [string]$Url,
         [string]$Arquivo,
         [System.Windows.Forms.Label]$StatusLabel,
-        [System.Windows.Forms.Label]$LabelGeral,
+        [System.Windows.Forms.Label]$GeralLabel,
         [System.Windows.Forms.ProgressBar]$Barra
     )
 
@@ -131,9 +154,9 @@ catch {
 "@
 
         $proc = Start-Process powershell.exe `
-            -ArgumentList "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command $script" `
-            -PassThru `
-            -WindowStyle Hidden
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command $script" `
+            -WindowStyle Hidden `
+            -PassThru
 
         $downloadsAtivos[$Nome] = [PSCustomObject]@{
             ProcessoId = $proc.Id
@@ -143,12 +166,12 @@ catch {
         }
 
         Set-Status $StatusLabel "Baixando..." "andando"
-        $LabelGeral.Text = "Baixando $Nome..."
+        $GeralLabel.Text = "Baixando $Nome..."
         $Barra.Style = "Marquee"
     }
     catch {
         Set-Status $StatusLabel "Erro [X]" "erro"
-        $LabelGeral.Text = "Falha ao iniciar download de $Nome."
+        $GeralLabel.Text = "Falha ao iniciar $Nome."
         $Barra.Style = "Blocks"
     }
 }
@@ -158,89 +181,112 @@ catch {
 # =========================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Lynext - Downloads"
-$form.Size = New-Object System.Drawing.Size(620,430)
+$form.Size = New-Object System.Drawing.Size(700, 470)
 $form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog"
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
 $form.Topmost = $true
-$form.BackColor = $corFundo
+$form.BackColor = $bgMain
+$form.ForeColor = $fgMain
 
-$titulo = Novo-Label "Central de Downloads" 185 18 15 $true
+$titulo = Criar-Label "Central de Downloads" 225 18 16 $true
 $form.Controls.Add($titulo)
 
-$sub = Novo-Label "Automático separado do manual, do jeito mais estável" 145 48 9 $false $corTextoSoft
-$form.Controls.Add($sub)
+$subtitulo = Criar-Label "Dark mode, download automatico separado do manual" 175 48 9 $false $fgSoft
+$form.Controls.Add($subtitulo)
 
 # =========================
-# SECAO AUTOMATICA
+# PAINEL AUTOMATICO
 # =========================
-$autoTitulo = Novo-Label "AUTOMATICO" 35 90 11 $true
-$form.Controls.Add($autoTitulo)
+$panelAuto = Criar-Painel 28 90 630 140
+$form.Controls.Add($panelAuto)
 
-$autoInfo = Novo-Label "Baixa direto para Downloads\Instaladores" 35 112 9 $false $corTextoSoft
-$form.Controls.Add($autoInfo)
+$autoTitulo = Criar-Label "AUTOMATICO" 18 14 11 $true
+$autoTitulo.Parent = $panelAuto
+$panelAuto.Controls.Add($autoTitulo)
 
-$lblChrome = Novo-Label "Chrome" 35 145
-$stChrome = Novo-Label "Aguardando" 360 145 10 $false $corTextoSoft
-$form.Controls.Add($lblChrome)
-$form.Controls.Add($stChrome)
+$autoSub = Criar-Label "Baixa direto para Downloads\Instaladores" 18 38 9 $false $fgSoft
+$autoSub.Parent = $panelAuto
+$panelAuto.Controls.Add($autoSub)
 
-$btnChrome = Novo-Botao "Baixar" 470 140
-$form.Controls.Add($btnChrome)
+$chromeNome = Criar-Label "Chrome" 18 78 10 $false
+$chromeNome.Parent = $panelAuto
+$panelAuto.Controls.Add($chromeNome)
 
-$lblAnyDesk = Novo-Label "AnyDesk" 35 180
-$stAnyDesk = Novo-Label "Aguardando" 360 180 10 $false $corTextoSoft
-$form.Controls.Add($lblAnyDesk)
-$form.Controls.Add($stAnyDesk)
+$chromeStatus = Criar-Label "Aguardando" 280 78 10 $false $fgSoft
+$chromeStatus.Parent = $panelAuto
+$panelAuto.Controls.Add($chromeStatus)
 
-$btnAnyDesk = Novo-Botao "Baixar" 470 175
-$form.Controls.Add($btnAnyDesk)
+$btnChrome = Criar-Botao "Baixar" 485 72 110 32
+$panelAuto.Controls.Add($btnChrome)
+
+$anydeskNome = Criar-Label "AnyDesk" 18 108 10 $false
+$anydeskNome.Parent = $panelAuto
+$panelAuto.Controls.Add($anydeskNome)
+
+$anydeskStatus = Criar-Label "Aguardando" 280 108 10 $false $fgSoft
+$anydeskStatus.Parent = $panelAuto
+$panelAuto.Controls.Add($anydeskStatus)
+
+$btnAnyDesk = Criar-Botao "Baixar" 485 102 110 32
+$panelAuto.Controls.Add($btnAnyDesk)
 
 # =========================
-# SECAO MANUAL
+# PAINEL MANUAL
 # =========================
-$manualTitulo = Novo-Label "MANUAL" 35 230 11 $true
-$form.Controls.Add($manualTitulo)
+$panelManual = Criar-Painel 28 245 630 140
+$form.Controls.Add($panelManual)
 
-$manualInfo = Novo-Label "Abre a pagina oficial para voce baixar manualmente" 35 252 9 $false $corTextoSoft
-$form.Controls.Add($manualInfo)
+$manualTitulo = Criar-Label "MANUAL" 18 14 11 $true
+$manualTitulo.Parent = $panelManual
+$panelManual.Controls.Add($manualTitulo)
 
-$lblJava = Novo-Label "Java" 35 285
-$stJava = Novo-Label "Aguardando" 360 285 10 $false $corTextoSoft
-$form.Controls.Add($lblJava)
-$form.Controls.Add($stJava)
+$manualSub = Criar-Label "Abre a pagina oficial para baixar manualmente" 18 38 9 $false $fgSoft
+$manualSub.Parent = $panelManual
+$panelManual.Controls.Add($manualSub)
 
-$btnJava = Novo-Botao "Abrir Pagina" 440 280 140 30
-$form.Controls.Add($btnJava)
+$javaNome = Criar-Label "Java" 18 78 10 $false
+$javaNome.Parent = $panelManual
+$panelManual.Controls.Add($javaNome)
 
-$lblAdobe = Novo-Label "Adobe Reader" 35 320
-$stAdobe = Novo-Label "Aguardando" 360 320 10 $false $corTextoSoft
-$form.Controls.Add($lblAdobe)
-$form.Controls.Add($stAdobe)
+$javaStatus = Criar-Label "Aguardando" 280 78 10 $false $fgSoft
+$javaStatus.Parent = $panelManual
+$panelManual.Controls.Add($javaStatus)
 
-$btnAdobe = Novo-Botao "Abrir Pagina" 440 315 140 30
-$form.Controls.Add($btnAdobe)
+$btnJava = Criar-Botao "Abrir pagina" 455 72 140 32
+$panelManual.Controls.Add($btnJava)
+
+$adobeNome = Criar-Label "Adobe Reader" 18 108 10 $false
+$adobeNome.Parent = $panelManual
+$panelManual.Controls.Add($adobeNome)
+
+$adobeStatus = Criar-Label "Aguardando" 280 108 10 $false $fgSoft
+$adobeStatus.Parent = $panelManual
+$panelManual.Controls.Add($adobeStatus)
+
+$btnAdobe = Criar-Botao "Abrir pagina" 455 102 140 32
+$panelManual.Controls.Add($btnAdobe)
 
 # =========================
 # RODAPE
 # =========================
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Size = New-Object System.Drawing.Size(545,18)
-$progress.Location = New-Object System.Drawing.Point(35,360)
-$progress.Style = "Blocks"
+$progress.Location = New-Object System.Drawing.Point(28, 395)
+$progress.Size = New-Object System.Drawing.Size(420, 18)
+$progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $progress.Minimum = 0
 $progress.Maximum = 100
 $progress.Value = 0
 $form.Controls.Add($progress)
 
-$lblGeral = Novo-Label "Pronto para iniciar." 35 385 9 $false $corTextoSoft
-$form.Controls.Add($lblGeral)
+$geral = Criar-Label "Pronto para iniciar." 28 418 9 $false $fgSoft
+$form.Controls.Add($geral)
 
-$btnTudo = Novo-Botao "Baixar Todos Automaticos" 310 380 180 30
+$btnTudo = Criar-Botao "Baixar automaticos" 468 390 130 32
 $form.Controls.Add($btnTudo)
 
-$btnFechar = Novo-Botao "Fechar" 500 380 80 30
+$btnFechar = Criar-Botao "Fechar" 608 390 50 32
 $form.Controls.Add($btnFechar)
 
 # =========================
@@ -279,11 +325,11 @@ $timer.Add_Tick({
 
                     if ((Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
                         Set-Status $info.Status "Concluido [OK]" "ok"
-                        $lblGeral.Text = "$nome concluido."
+                        $geral.Text = "$nome concluido."
                     }
                     else {
                         Set-Status $info.Status "Erro [X]" "erro"
-                        $lblGeral.Text = "Falha em $nome."
+                        $geral.Text = "Falha em $nome."
                     }
                 }
             }
@@ -295,14 +341,12 @@ $timer.Add_Tick({
     }
 
     $total = 2
-    $progress.Style = "Blocks"
-    $progress.Value = [math]::Min([int](($concluidos / $total) * 100),100)
-
     if ($ativos -gt 0) {
-        $progress.Style = "Marquee"
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
     }
-    elseif ($concluidos -eq $total -or $downloadsAtivos.Count -gt 0) {
-        $progress.Style = "Blocks"
+    else {
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+        $progress.Value = [math]::Min([int](($concluidos / $total) * 100), 100)
     }
 })
 
@@ -316,8 +360,8 @@ $btnChrome.Add_Click({
         -Nome "Chrome" `
         -Url "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi" `
         -Arquivo "Chrome.msi" `
-        -StatusLabel $stChrome `
-        -LabelGeral $lblGeral `
+        -StatusLabel $chromeStatus `
+        -GeralLabel $geral `
         -Barra $progress
 })
 
@@ -326,38 +370,38 @@ $btnAnyDesk.Add_Click({
         -Nome "AnyDesk" `
         -Url "https://download.anydesk.com/AnyDesk.exe" `
         -Arquivo "AnyDesk.exe" `
-        -StatusLabel $stAnyDesk `
-        -LabelGeral $lblGeral `
+        -StatusLabel $anydeskStatus `
+        -GeralLabel $geral `
         -Barra $progress
 })
 
 $btnJava.Add_Click({
     try {
         Start-Process "https://www.java.com/pt-br/download/"
-        Set-Status $stJava "Pagina aberta [OK]" "manual"
-        $lblGeral.Text = "Pagina do Java aberta."
+        Set-Status $javaStatus "Pagina aberta [OK]" "manual"
+        $geral.Text = "Pagina do Java aberta."
     }
     catch {
-        Set-Status $stJava "Erro [X]" "erro"
-        $lblGeral.Text = "Falha ao abrir pagina do Java."
+        Set-Status $javaStatus "Erro [X]" "erro"
+        $geral.Text = "Falha ao abrir pagina do Java."
     }
 })
 
 $btnAdobe.Add_Click({
     try {
         Start-Process "https://get.adobe.com/br/reader/"
-        Set-Status $stAdobe "Pagina aberta [OK]" "manual"
-        $lblGeral.Text = "Pagina do Adobe Reader aberta."
+        Set-Status $adobeStatus "Pagina aberta [OK]" "manual"
+        $geral.Text = "Pagina do Adobe Reader aberta."
     }
     catch {
-        Set-Status $stAdobe "Erro [X]" "erro"
-        $lblGeral.Text = "Falha ao abrir pagina do Adobe Reader."
+        Set-Status $adobeStatus "Erro [X]" "erro"
+        $geral.Text = "Falha ao abrir pagina do Adobe Reader."
     }
 })
 
 $btnTudo.Add_Click({
     $btnChrome.PerformClick()
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 250
     $btnAnyDesk.PerformClick()
 })
 
