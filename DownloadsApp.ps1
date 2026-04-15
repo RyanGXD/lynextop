@@ -3,80 +3,118 @@ Add-Type -AssemblyName System.Drawing
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+# =========================
+# CONFIG
+# =========================
+$destinoBase = Join-Path $env:USERPROFILE "Downloads\Instaladores"
+
+# Coloque aqui os links que você quer usar
+# Se algum der erro, a interface continua funcionando sem travar
+$apps = @(
+    @{
+        Nome      = "Chrome"
+        Arquivo   = "Chrome.msi"
+        Url       = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+        Tipo      = "download"
+    },
+    @{
+        Nome      = "Java"
+        Arquivo   = "Java_x64.exe"
+        Url       = "https://javadl.oracle.com/webapps/download/AutoDL?BundleId=252907_0d06828d282343ea81775b28020a7cd3"
+        Tipo      = "download"
+    },
+    @{
+        Nome      = "Adobe Reader"
+        Arquivo   = ""
+        Url       = "https://get.adobe.com/br/reader/"
+        Tipo      = "pagina"
+    },
+    @{
+        Nome      = "AnyDesk"
+        Arquivo   = "AnyDesk.exe"
+        Url       = "https://download.anydesk.com/AnyDesk.exe"
+        Tipo      = "download"
+    }
+)
+
+# =========================
+# FUNCOES
+# =========================
+function Garantir-PastaDestino {
+    param([string]$Pasta)
+
+    if (!(Test-Path $Pasta)) {
+        New-Item -ItemType Directory -Path $Pasta -Force | Out-Null
+    }
+}
+
+function Atualizar-StatusVisual {
+    param(
+        [hashtable]$MapaLabels,
+        [string]$Nome,
+        [string]$Texto
+    )
+
+    if ($MapaLabels.ContainsKey($Nome)) {
+        $MapaLabels[$Nome].Text = $Texto
+    }
+}
+
+# =========================
+# FORM
+# =========================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Lynext - Downloads"
-$form.Size = New-Object System.Drawing.Size(520,360)
+$form.Size = New-Object System.Drawing.Size(560, 380)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
+$form.MinimizeBox = $false
 $form.Topmost = $true
-$form.BackColor = [System.Drawing.Color]::FromArgb(245,245,245)
+$form.BackColor = [System.Drawing.Color]::White
 
 $titulo = New-Object System.Windows.Forms.Label
 $titulo.Text = "Central de Downloads"
-$titulo.Font = New-Object System.Drawing.Font("Segoe UI",13,[System.Drawing.FontStyle]::Bold)
+$titulo.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
 $titulo.AutoSize = $true
-$titulo.Location = New-Object System.Drawing.Point(160,20)
+$titulo.Location = New-Object System.Drawing.Point(170, 18)
 $form.Controls.Add($titulo)
 
-$sub = New-Object System.Windows.Forms.Label
-$sub.Text = "Baixe os programas e acompanhe o status em tempo real"
-$sub.Font = New-Object System.Drawing.Font("Segoe UI",9)
-$sub.AutoSize = $true
-$sub.Location = New-Object System.Drawing.Point(95,50)
-$form.Controls.Add($sub)
+$subtitulo = New-Object System.Windows.Forms.Label
+$subtitulo.Text = "Downloads em segundo plano com status em tempo real"
+$subtitulo.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$subtitulo.AutoSize = $true
+$subtitulo.ForeColor = [System.Drawing.Color]::DimGray
+$subtitulo.Location = New-Object System.Drawing.Point(120, 48)
+$form.Controls.Add($subtitulo)
 
-function Novo-StatusLabel {
-    param(
-        [int]$x,
-        [int]$y,
-        [string]$texto
-    )
-    $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = $texto
-    $lbl.Font = New-Object System.Drawing.Font("Segoe UI",10)
-    $lbl.AutoSize = $true
-    $lbl.Location = New-Object System.Drawing.Point($x,$y)
-    return $lbl
+$labelsStatus = @{}
+$y = 95
+
+foreach ($app in $apps) {
+    $lblNome = New-Object System.Windows.Forms.Label
+    $lblNome.Text = $app.Nome
+    $lblNome.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $lblNome.AutoSize = $true
+    $lblNome.Location = New-Object System.Drawing.Point(35, $y)
+    $form.Controls.Add($lblNome)
+
+    $lblStatus = New-Object System.Windows.Forms.Label
+    $lblStatus.Text = "Aguardando"
+    $lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $lblStatus.AutoSize = $true
+    $lblStatus.Location = New-Object System.Drawing.Point(390, $y)
+    $lblStatus.ForeColor = [System.Drawing.Color]::Gray
+    $form.Controls.Add($lblStatus)
+
+    $labelsStatus[$app.Nome] = $lblStatus
+    $y += 38
 }
-
-function Novo-Botao {
-    param(
-        [string]$texto,
-        [int]$x,
-        [int]$y
-    )
-    $btn = New-Object System.Windows.Forms.Button
-    $btn.Text = $texto
-    $btn.Size = New-Object System.Drawing.Size(120,35)
-    $btn.Location = New-Object System.Drawing.Point($x,$y)
-    return $btn
-}
-
-$lblChrome = Novo-StatusLabel 30 95 "Chrome"
-$stChrome  = Novo-StatusLabel 360 95 "Aguardando"
-$form.Controls.Add($lblChrome)
-$form.Controls.Add($stChrome)
-
-$lblJava = Novo-StatusLabel 30 130 "Java"
-$stJava  = Novo-StatusLabel 360 130 "Aguardando"
-$form.Controls.Add($lblJava)
-$form.Controls.Add($stJava)
-
-$lblAdobe = Novo-StatusLabel 30 165 "Adobe Reader"
-$stAdobe  = Novo-StatusLabel 360 165 "Aguardando"
-$form.Controls.Add($lblAdobe)
-$form.Controls.Add($stAdobe)
-
-$lblAnyDesk = Novo-StatusLabel 30 200 "AnyDesk"
-$stAnyDesk  = Novo-StatusLabel 360 200 "Aguardando"
-$form.Controls.Add($lblAnyDesk)
-$form.Controls.Add($stAnyDesk)
 
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Size = New-Object System.Drawing.Size(440,22)
-$progress.Location = New-Object System.Drawing.Point(30,240)
-$progress.Style = "Continuous"
+$progress.Size = New-Object System.Drawing.Size(470, 20)
+$progress.Location = New-Object System.Drawing.Point(35, 255)
+$progress.Style = "Blocks"
 $progress.Minimum = 0
 $progress.Maximum = 100
 $progress.Value = 0
@@ -84,156 +122,187 @@ $form.Controls.Add($progress)
 
 $lblGeral = New-Object System.Windows.Forms.Label
 $lblGeral.Text = "Pronto para iniciar."
+$lblGeral.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $lblGeral.AutoSize = $true
-$lblGeral.Font = New-Object System.Drawing.Font("Segoe UI",9)
-$lblGeral.Location = New-Object System.Drawing.Point(30,270)
+$lblGeral.Location = New-Object System.Drawing.Point(35, 285)
+$lblGeral.ForeColor = [System.Drawing.Color]::DimGray
 $form.Controls.Add($lblGeral)
 
-$btnBaixarTudo = Novo-Botao "Baixar Todos" 110 295
-$btnFechar = Novo-Botao "Fechar" 260 295
-$form.Controls.Add($btnBaixarTudo)
+$chkAbrirPaginas = New-Object System.Windows.Forms.CheckBox
+$chkAbrirPaginas.Text = "Abrir pagina oficial junto"
+$chkAbrirPaginas.AutoSize = $true
+$chkAbrirPaginas.Location = New-Object System.Drawing.Point(35, 310)
+$chkAbrirPaginas.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$form.Controls.Add($chkAbrirPaginas)
+
+$btnBaixarTodos = New-Object System.Windows.Forms.Button
+$btnBaixarTodos.Text = "Baixar Todos"
+$btnBaixarTodos.Size = New-Object System.Drawing.Size(140, 34)
+$btnBaixarTodos.Location = New-Object System.Drawing.Point(235, 305)
+$form.Controls.Add($btnBaixarTodos)
+
+$btnFechar = New-Object System.Windows.Forms.Button
+$btnFechar.Text = "Fechar"
+$btnFechar.Size = New-Object System.Drawing.Size(100, 34)
+$btnFechar.Location = New-Object System.Drawing.Point(390, 305)
 $form.Controls.Add($btnFechar)
 
-function Garantir-PastaDestino {
-    $destino = Join-Path $env:USERPROFILE "Downloads\Instaladores"
-    if (!(Test-Path $destino)) {
-        New-Item -ItemType Directory -Path $destino -Force | Out-Null
+# =========================
+# BACKGROUND WORKER
+# =========================
+$worker = New-Object System.ComponentModel.BackgroundWorker
+$worker.WorkerReportsProgress = $true
+$worker.WorkerSupportsCancellation = $false
+
+$worker.add_DoWork({
+    param($sender, $e)
+
+    $payload = $e.Argument
+    $listaApps = $payload.Apps
+    $abrirPaginas = $payload.AbrirPaginas
+    $pastaDestino = $payload.Destino
+
+    Garantir-PastaDestino -Pasta $pastaDestino
+
+    $total = $listaApps.Count
+    $indice = 0
+
+    foreach ($app in $listaApps) {
+        $indice++
+        $percentBase = [int](($indice - 1) / $total * 100)
+        $percentFim  = [int]($indice / $total * 100)
+
+        $sender.ReportProgress($percentBase, @{
+            Nome = $app.Nome
+            Status = "Baixando..."
+            Geral = "Processando $($app.Nome)..."
+        })
+
+        try {
+            if ($abrirPaginas -and $app.Url) {
+                Start-Process $app.Url | Out-Null
+            }
+
+            if ($app.Tipo -eq "download") {
+                $saida = Join-Path $pastaDestino $app.Arquivo
+
+                if (Test-Path $saida) {
+                    Remove-Item $saida -Force -ErrorAction SilentlyContinue
+                }
+
+                $wc = New-Object System.Net.WebClient
+                $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+                $wc.DownloadFile($app.Url, $saida)
+                $wc.Dispose()
+
+                if ((Test-Path $saida) -and ((Get-Item $saida).Length -gt 0)) {
+                    $sender.ReportProgress($percentFim, @{
+                        Nome = $app.Nome
+                        Status = "Concluido  [OK]"
+                        Geral = "$($app.Nome) concluido."
+                    })
+                }
+                else {
+                    throw "Arquivo vazio ou inexistente."
+                }
+            }
+            elseif ($app.Tipo -eq "pagina") {
+                Start-Process $app.Url | Out-Null
+                $sender.ReportProgress($percentFim, @{
+                    Nome = $app.Nome
+                    Status = "Pagina aberta  [OK]"
+                    Geral = "Pagina de $($app.Nome) aberta."
+                })
+            }
+            else {
+                throw "Tipo invalido."
+            }
+        }
+        catch {
+            $sender.ReportProgress($percentFim, @{
+                Nome = $app.Nome
+                Status = "Erro  [X]"
+                Geral = "Falha em $($app.Nome): $($_.Exception.Message)"
+            })
+        }
     }
-    return $destino
-}
+})
 
-function Atualizar-Status {
-    param(
-        [System.Windows.Forms.Label]$Label,
-        [string]$Texto
-    )
-    $Label.Text = $Texto
-    $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
-}
+$worker.add_ProgressChanged({
+    param($sender, $e)
 
-function Baixar-Arquivo {
-    param(
-        [string]$Nome,
-        [string]$Url,
-        [string]$Arquivo,
-        [System.Windows.Forms.Label]$StatusLabel,
-        [int]$ProgressValue,
-        [string]$PaginaUrl = $null
-    )
+    $data = $e.UserState
 
-    try {
-        Atualizar-Status $StatusLabel "Baixando..."
-        $lblGeral.Text = "Baixando $Nome..."
-        $progress.Value = [Math]::Min($ProgressValue - 15, 95)
-        $form.Refresh()
-        [System.Windows.Forms.Application]::DoEvents()
+    if ($null -ne $data) {
+        Atualizar-StatusVisual -MapaLabels $labelsStatus -Nome $data.Nome -Texto $data.Status
+        $lblGeral.Text = $data.Geral
 
-        if ($PaginaUrl) {
-            Start-Process $PaginaUrl
+        if ($data.Status -like "Baixando*") {
+            $labelsStatus[$data.Nome].ForeColor = [System.Drawing.Color]::DarkOrange
+            $progress.Style = "Marquee"
+        }
+        elseif ($data.Status -like "Concluido*") {
+            $labelsStatus[$data.Nome].ForeColor = [System.Drawing.Color]::ForestGreen
+            $progress.Style = "Blocks"
+            $progress.Value = [Math]::Min($e.ProgressPercentage, 100)
+        }
+        elseif ($data.Status -like "Pagina aberta*") {
+            $labelsStatus[$data.Nome].ForeColor = [System.Drawing.Color]::SteelBlue
+            $progress.Style = "Blocks"
+            $progress.Value = [Math]::Min($e.ProgressPercentage, 100)
+        }
+        elseif ($data.Status -like "Erro*") {
+            $labelsStatus[$data.Nome].ForeColor = [System.Drawing.Color]::Crimson
+            $progress.Style = "Blocks"
+            $progress.Value = [Math]::Min($e.ProgressPercentage, 100)
+        }
+    }
+})
+
+$worker.add_RunWorkerCompleted({
+    param($sender, $e)
+
+    $progress.Style = "Blocks"
+    $progress.Value = 100
+    $lblGeral.Text = "Processo finalizado."
+    $btnBaixarTodos.Enabled = $true
+    $chkAbrirPaginas.Enabled = $true
+})
+
+# =========================
+# EVENTOS
+# =========================
+$btnBaixarTodos.Add_Click({
+    if (-not $worker.IsBusy) {
+        foreach ($app in $apps) {
+            $labelsStatus[$app.Nome].Text = "Na fila..."
+            $labelsStatus[$app.Nome].ForeColor = [System.Drawing.Color]::Gray
         }
 
-        $destino = Garantir-PastaDestino
-        $saida = Join-Path $destino $Arquivo
+        $progress.Value = 0
+        $progress.Style = "Blocks"
+        $lblGeral.Text = "Iniciando..."
+        $btnBaixarTodos.Enabled = $false
+        $chkAbrirPaginas.Enabled = $false
 
-        Invoke-WebRequest -Uri $Url -OutFile $saida -UseBasicParsing
-
-        Atualizar-Status $StatusLabel "Concluido  [OK]"
-        $progress.Value = $ProgressValue
-        $lblGeral.Text = "$Nome concluido."
-        $form.Refresh()
-        [System.Windows.Forms.Application]::DoEvents()
-        return $true
+        $worker.RunWorkerAsync(@{
+            Apps = $apps
+            AbrirPaginas = $chkAbrirPaginas.Checked
+            Destino = $destinoBase
+        })
     }
-    catch {
-        Atualizar-Status $StatusLabel "Erro  [X]"
-        $lblGeral.Text = "Falha em $Nome."
-        $form.Refresh()
-        [System.Windows.Forms.Application]::DoEvents()
-        return $false
-    }
-}
-
-function Abrir-Somente-Link {
-    param(
-        [string]$Nome,
-        [string]$Url,
-        [System.Windows.Forms.Label]$StatusLabel,
-        [int]$ProgressValue
-    )
-
-    try {
-        Atualizar-Status $StatusLabel "Abrindo pagina..."
-        $lblGeral.Text = "Abrindo pagina de $Nome..."
-        $form.Refresh()
-        [System.Windows.Forms.Application]::DoEvents()
-
-        Start-Process $Url
-
-        Atualizar-Status $StatusLabel "Pagina aberta  [OK]"
-        $progress.Value = $ProgressValue
-        $lblGeral.Text = "Pagina de $Nome aberta."
-        $form.Refresh()
-        [System.Windows.Forms.Application]::DoEvents()
-        return $true
-    }
-    catch {
-        Atualizar-Status $StatusLabel "Erro  [X]"
-        $lblGeral.Text = "Falha ao abrir pagina de $Nome."
-        $form.Refresh()
-        [System.Windows.Forms.Application]::DoEvents()
-        return $false
-    }
-}
-
-$btnBaixarTudo.Add_Click({
-    $btnBaixarTudo.Enabled = $false
-    $progress.Value = 0
-
-    Atualizar-Status $stChrome "Na fila..."
-    Atualizar-Status $stJava "Na fila..."
-    Atualizar-Status $stAdobe "Na fila..."
-    Atualizar-Status $stAnyDesk "Na fila..."
-    $lblGeral.Text = "Iniciando downloads..."
-    $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
-
-    Baixar-Arquivo `
-        -Nome "Chrome" `
-        -Url "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi" `
-        -Arquivo "Chrome.msi" `
-        -StatusLabel $stChrome `
-        -ProgressValue 25 `
-        -PaginaUrl "https://www.google.com/intl/pt-BR/chrome/" | Out-Null
-
-    Baixar-Arquivo `
-        -Nome "Java" `
-        -Url "https://javadl.oracle.com/webapps/download/AutoDL?BundleId=252907_0d06828d282343ea81775b28020a7cd3" `
-        -Arquivo "Java_x64.exe" `
-        -StatusLabel $stJava `
-        -ProgressValue 50 `
-        -PaginaUrl "https://www.java.com/pt-br/download/manual.jsp" | Out-Null
-
-    Abrir-Somente-Link `
-        -Nome "Adobe Reader" `
-        -Url "https://get.adobe.com/br/reader/" `
-        -StatusLabel $stAdobe `
-        -ProgressValue 75 | Out-Null
-
-    Baixar-Arquivo `
-        -Nome "AnyDesk" `
-        -Url "https://download.anydesk.com/AnyDesk.exe" `
-        -Arquivo "AnyDesk.exe" `
-        -StatusLabel $stAnyDesk `
-        -ProgressValue 100 `
-        -PaginaUrl "https://anydesk.com/pt/downloads/windows" | Out-Null
-
-    $lblGeral.Text = "Processo finalizado."
-    $btnBaixarTudo.Enabled = $true
 })
 
 $btnFechar.Add_Click({
-    $form.Close()
+    if (-not $worker.IsBusy) {
+        $form.Close()
+    }
+    else {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Aguarde os downloads terminarem antes de fechar.",
+            "Lynext"
+        ) | Out-Null
+    }
 })
 
 [void]$form.ShowDialog()
