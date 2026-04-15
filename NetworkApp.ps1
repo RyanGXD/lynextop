@@ -1,5 +1,6 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName Microsoft.VisualBasic
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -17,19 +18,24 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 # =========================
 # GLOBAL
 # =========================
-$script:IsBusy = $false
 $script:LogDir = Join-Path $env:TEMP "Lynext\Logs"
-$null = New-Item -Path $script:LogDir -ItemType Directory -Force
-$script:LogFile = Join-Path $script:LogDir ("NetworkApp_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+$null = New-Item -ItemType Directory -Path $script:LogDir -Force
 
-$bgMain      = [System.Drawing.Color]::FromArgb(8,12,20)
+$script:LogFile = Join-Path $script:LogDir ("NetworkApp_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+$script:Task = $null
+$script:IsBusy = $false
+
+# =========================
+# CORES
+# =========================
+$bgMain      = [System.Drawing.Color]::FromArgb(7,10,18)
 $bgPanel     = [System.Drawing.Color]::FromArgb(15,20,32)
 $bgPanel2    = [System.Drawing.Color]::FromArgb(20,26,40)
-$bgButton    = [System.Drawing.Color]::FromArgb(12,18,30)
+$bgButton    = [System.Drawing.Color]::FromArgb(10,18,30)
 $bgHover     = [System.Drawing.Color]::FromArgb(20,30,48)
-$bgDown      = [System.Drawing.Color]::FromArgb(26,40,60)
+$bgDown      = [System.Drawing.Color]::FromArgb(28,42,62)
 $txtMain     = [System.Drawing.Color]::FromArgb(235,240,250)
-$txtSoft     = [System.Drawing.Color]::FromArgb(160,170,190)
+$txtSoft     = [System.Drawing.Color]::FromArgb(155,170,190)
 $accent      = [System.Drawing.Color]::FromArgb(0,190,255)
 $okColor     = [System.Drawing.Color]::FromArgb(0,230,140)
 $warnColor   = [System.Drawing.Color]::FromArgb(255,190,70)
@@ -44,6 +50,7 @@ function Write-Log {
         [string]$Message,
         [string]$Level = "INFO"
     )
+
     $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level.ToUpper(), $Message
     Add-Content -Path $script:LogFile -Value $line -Encoding UTF8
 }
@@ -86,15 +93,15 @@ function Set-Status {
     }
 }
 
-function Convert-ToEncodedCommand {
-    param([string]$Code)
-    [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Code))
-}
-
 function Escape-SQ {
     param([string]$Text)
     if ($null -eq $Text) { return "" }
     return ($Text -replace "'", "''")
+}
+
+function Convert-ToEncodedCommand {
+    param([string]$Code)
+    [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Code))
 }
 
 function Get-ActiveAdapterName {
@@ -103,9 +110,7 @@ function Get-ActiveAdapterName {
         if (-not $nic) {
             $nic = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Sort-Object ifIndex | Select-Object -First 1
         }
-        if ($nic) {
-            return $nic.Name
-        }
+        if ($nic) { return $nic.Name }
     }
     catch {}
     return "Ethernet"
@@ -159,7 +164,7 @@ function Show-InputDialog {
     })
 
     $cancel = New-Object System.Windows.Forms.Button
-    $cancel.Text = "Cancel"
+    $cancel.Text = "Cancelar"
     $cancel.Location = New-Object System.Drawing.Point(320,80)
     $cancel.Size = New-Object System.Drawing.Size(80,30)
     $cancel.FlatStyle = "Flat"
@@ -189,7 +194,7 @@ function New-LynextButton {
         [string]$Text,
         [int]$X,
         [int]$Y,
-        [int]$W = 180,
+        [int]$W = 170,
         [int]$H = 42
     )
 
@@ -210,36 +215,33 @@ function New-LynextButton {
     return $btn
 }
 
-function Start-LynextAction {
+function Start-LynextTask {
     param(
         [string]$Name,
         [string]$Code,
         [switch]$Confirm,
-        [string]$ConfirmMessage = "Confirm action?"
+        [string]$ConfirmMessage = "Confirmar execucao?"
     )
 
     if ($script:IsBusy) {
-        Set-Status "Wait for the current action to finish." "warn"
+        Set-Status "Aguarde a acao atual terminar." "warn"
         return
     }
 
     if ($Confirm) {
-        $answer = [System.Windows.Forms.MessageBox]::Show(
+        $ans = [System.Windows.Forms.MessageBox]::Show(
             $ConfirmMessage,
             "Lynext",
             [System.Windows.Forms.MessageBoxButtons]::YesNo,
             [System.Windows.Forms.MessageBoxIcon]::Warning
         )
-        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+        if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) {
             return
         }
     }
 
-    $script:IsBusy = $true
-    $script:prg.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-    Append-Output ">>> $Name" -Clear
-    Write-Log "START: $Name"
-    Set-Status "Running: $Name" "busy"
+    $outFile = Join-Path $script:LogDir ("task_out_{0}.txt" -f ([guid]::NewGuid().ToString("N")))
+    $errFile = Join-Path $script:LogDir ("task_err_{0}.txt" -f ([guid]::NewGuid().ToString("N")))
 
     $fullCode = @"
 `$ProgressPreference = 'SilentlyContinue'
@@ -249,73 +251,108 @@ $Code
 
     $encoded = Convert-ToEncodedCommand $fullCode
 
-    $worker = New-Object System.ComponentModel.BackgroundWorker
+    Append-Output ">>> $Name" -Clear
+    Set-Status "Executando: $Name" "busy"
+    Write-Log "START: $Name"
+    $script:prg.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+    $script:IsBusy = $true
 
-    $worker.add_DoWork({
-        param($sender, $e)
+    $proc = Start-Process powershell.exe `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded" `
+        -RedirectStandardOutput $outFile `
+        -RedirectStandardError $errFile `
+        -WindowStyle Hidden `
+        -PassThru
 
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = "powershell.exe"
-        $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $($e.Argument.Encoded)"
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.CreateNoWindow = $true
+    $script:Task = [pscustomobject]@{
+        Name = $Name
+        Process = $proc
+        OutFile = $outFile
+        ErrFile = $errFile
+        LastOutLen = 0
+        LastErrLen = 0
+    }
+}
 
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        $stdout = $proc.StandardOutput.ReadToEnd()
-        $stderr = $proc.StandardError.ReadToEnd()
-        $proc.WaitForExit()
+function Finish-LynextTask {
+    if (-not $script:Task) { return }
 
-        $e.Result = [pscustomobject]@{
-            Name = $e.Argument.Name
-            ExitCode = $proc.ExitCode
-            StdOut = $stdout
-            StdErr = $stderr
+    $task = $script:Task
+
+    if (Test-Path $task.OutFile) {
+        $out = Get-Content $task.OutFile -Raw -ErrorAction SilentlyContinue
+        if ($out.Length -gt $task.LastOutLen) {
+            $new = $out.Substring($task.LastOutLen)
+            if (-not [string]::IsNullOrWhiteSpace($new)) {
+                Append-Output $new.TrimEnd()
+            }
         }
-    })
+    }
 
-    $worker.add_RunWorkerCompleted({
-        param($sender, $e)
-
-        $script:IsBusy = $false
-        $script:prg.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
-
-        if ($e.Error) {
-            Append-Output ("FATAL ERROR: " + $e.Error.Message)
-            Write-Log ("FATAL ERROR: " + $e.Error.Message) "ERROR"
-            Set-Status "Fatal error while running action." "error"
-            return
+    if (Test-Path $task.ErrFile) {
+        $err = Get-Content $task.ErrFile -Raw -ErrorAction SilentlyContinue
+        if ($err.Length -gt $task.LastErrLen) {
+            $newErr = $err.Substring($task.LastErrLen)
+            if (-not [string]::IsNullOrWhiteSpace($newErr)) {
+                Append-Output ("ERRO:`r`n" + $newErr.TrimEnd())
+            }
         }
+    }
 
-        $result = $e.Result
+    $exitCode = $task.Process.ExitCode
 
-        if (-not [string]::IsNullOrWhiteSpace($result.StdOut)) {
-            Append-Output $result.StdOut.TrimEnd()
-        }
-
-        if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
-            Append-Output ("ERROR:`r`n" + $result.StdErr.TrimEnd())
-        }
-
-        if ($result.ExitCode -eq 0 -and [string]::IsNullOrWhiteSpace($result.StdErr)) {
-            Set-Status "$($result.Name) done." "ok"
-            Write-Log "OK: $($result.Name)"
-        }
-        elseif ($result.ExitCode -eq 0) {
-            Set-Status "$($result.Name) done with warnings." "warn"
-            Write-Log "WARN: $($result.Name)" "WARN"
+    if ($exitCode -eq 0) {
+        if ((Test-Path $task.ErrFile) -and ((Get-Item $task.ErrFile).Length -gt 0)) {
+            Set-Status "$($task.Name) concluido com avisos." "warn"
+            Write-Log "WARN: $($task.Name)" "WARN"
         }
         else {
-            Set-Status "$($result.Name) failed." "error"
-            Write-Log "FAIL: $($result.Name) ExitCode=$($result.ExitCode)" "ERROR"
+            Set-Status "$($task.Name) concluido." "ok"
+            Write-Log "OK: $($task.Name)"
         }
-    })
+    }
+    else {
+        Set-Status "$($task.Name) falhou." "error"
+        Write-Log "FAIL: $($task.Name) ExitCode=$exitCode" "ERROR"
+    }
 
-    $worker.RunWorkerAsync([pscustomobject]@{
-        Name = $Name
-        Encoded = $encoded
-    })
+    $script:prg.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+    $script:IsBusy = $false
+    $script:Task = $null
+}
+
+function Poll-LynextTask {
+    if (-not $script:Task) { return }
+
+    $task = $script:Task
+
+    if (Test-Path $task.OutFile) {
+        $out = Get-Content $task.OutFile -Raw -ErrorAction SilentlyContinue
+        if ($out.Length -gt $task.LastOutLen) {
+            $new = $out.Substring($task.LastOutLen)
+            $task.LastOutLen = $out.Length
+            $script:Task = $task
+            if (-not [string]::IsNullOrWhiteSpace($new)) {
+                Append-Output $new.TrimEnd()
+            }
+        }
+    }
+
+    if (Test-Path $task.ErrFile) {
+        $err = Get-Content $task.ErrFile -Raw -ErrorAction SilentlyContinue
+        if ($err.Length -gt $task.LastErrLen) {
+            $newErr = $err.Substring($task.LastErrLen)
+            $task.LastErrLen = $err.Length
+            $script:Task = $task
+            if (-not [string]::IsNullOrWhiteSpace($newErr)) {
+                Append-Output ("ERRO:`r`n" + $newErr.TrimEnd())
+            }
+        }
+    }
+
+    if ($task.Process.HasExited) {
+        Finish-LynextTask
+    }
 }
 
 function Get-PingJitterCode {
@@ -323,7 +360,7 @@ function Get-PingJitterCode {
 
     $t = Escape-SQ $Target
 
-    @"
+@"
 `$target = '$t'
 `$count = 20
 `$samples = @()
@@ -345,7 +382,7 @@ foreach (`$r in @(`$result)) {
 `$loss = [math]::Round(((`$sent - `$received) / [double]`$sent) * 100, 2)
 
 if (`$received -eq 0) {
-    throw 'No ICMP reply received.'
+    throw 'Nenhuma resposta ICMP recebida.'
 }
 
 `$avg = [math]::Round((`$samples | Measure-Object -Average).Average, 2)
@@ -362,15 +399,15 @@ for (`$i = 1; `$i -lt `$samples.Count; `$i++) {
 } else { 0 }
 
 [pscustomobject]@{
-    Target = `$target
-    Sent = `$sent
-    Received = `$received
-    LossPercent = `$loss
-    AvgMs = `$avg
+    Destino = `$target
+    Enviados = `$sent
+    Recebidos = `$received
+    PerdaPercent = `$loss
+    MediaMs = `$avg
     MinMs = `$min
     MaxMs = `$max
     JitterMs = `$jitter
-    Samples = (`$samples -join ', ')
+    Amostras = (`$samples -join ', ')
 } | Format-List
 "@
 }
@@ -378,7 +415,7 @@ for (`$i = 1; `$i -lt `$samples.Count; `$i++) {
 function Get-TracertCode {
     param([string]$Target)
     $t = Escape-SQ $Target
-    @"
+@"
 tracert -d '$t'
 "@
 }
@@ -386,7 +423,7 @@ tracert -d '$t'
 function Get-PathPingCode {
     param([string]$Target)
     $t = Escape-SQ $Target
-    @"
+@"
 pathping -n '$t'
 "@
 }
@@ -395,7 +432,7 @@ function Get-MtuDiscoveryCode {
     param([string]$Target)
     $t = Escape-SQ $Target
 
-    @"
+@"
 `$target = '$t'
 
 function Test-Payload {
@@ -408,14 +445,13 @@ function Test-Payload {
 `$high = 1472
 
 if (-not (Test-Payload -Size `$low)) {
-    throw 'Failed even with payload 1200. Check connectivity.'
+    throw 'Falha mesmo com payload 1200. Verifique conectividade.'
 }
 
 `$best = `$low
 
 while (`$low -le `$high) {
     `$mid = [int][math]::Floor((`$low + `$high) / 2)
-
     if (Test-Payload -Size `$mid) {
         `$best = `$mid
         `$low = `$mid + 1
@@ -428,9 +464,9 @@ while (`$low -le `$high) {
 `$mtu = `$best + 28
 
 [pscustomobject]@{
-    Target = `$target
-    BestPayload = `$best
-    SuggestedIPv4MTU = `$mtu
+    Destino = `$target
+    MelhorPayload = `$best
+    MTU_Sugerido = `$mtu
 } | Format-List
 "@
 }
@@ -443,7 +479,7 @@ function Get-SetMtuCode {
 
     $a = Escape-SQ $Alias
 
-    @"
+@"
 `$alias = '$a'
 netsh interface ipv4 show subinterfaces
 '---'
@@ -455,7 +491,7 @@ netsh interface ipv4 show subinterfaces
 
 $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.AutoPopDelay = 8000
-$toolTip.InitialDelay = 350
+$toolTip.InitialDelay = 300
 $toolTip.ReshowDelay = 150
 $toolTip.ShowAlways = $true
 
@@ -463,17 +499,14 @@ $toolTip.ShowAlways = $true
 # FORM
 # =========================
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Lynext | Network"
-$form.Size = New-Object System.Drawing.Size(1220,760)
+$form.Text = "Lynext | Rede"
+$form.Size = New-Object System.Drawing.Size(1180,760)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = $bgMain
 $form.ForeColor = $txtMain
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
 
-# =========================
-# HEADER
-# =========================
 $lblTitle = New-Object System.Windows.Forms.Label
 $lblTitle.Text = "Lynext"
 $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI",24,[System.Drawing.FontStyle]::Bold)
@@ -482,7 +515,7 @@ $lblTitle.AutoSize = $true
 $lblTitle.Location = New-Object System.Drawing.Point(24,18)
 
 $lblSub = New-Object System.Windows.Forms.Label
-$lblSub.Text = "Network Center | diagnose, repair and safe baseline"
+$lblSub.Text = "Central de rede | diagnostico, reparo e baseline segura"
 $lblSub.Font = New-Object System.Drawing.Font("Segoe UI",10)
 $lblSub.ForeColor = $txtSoft
 $lblSub.AutoSize = $true
@@ -493,75 +526,53 @@ $lblCredit.Text = "Created by Ryan"
 $lblCredit.Font = New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Italic)
 $lblCredit.ForeColor = $txtSoft
 $lblCredit.AutoSize = $true
-$lblCredit.Location = New-Object System.Drawing.Point(1030,24)
+$lblCredit.Location = New-Object System.Drawing.Point(1010,24)
 
-# =========================
-# LEFT PANELS
-# =========================
+# LEFT
 $panelDiag = New-Object System.Windows.Forms.Panel
 $panelDiag.Location = New-Object System.Drawing.Point(24,100)
-$panelDiag.Size = New-Object System.Drawing.Size(560,170)
+$panelDiag.Size = New-Object System.Drawing.Size(540,170)
 $panelDiag.BackColor = $bgPanel
 
 $panelFix = New-Object System.Windows.Forms.Panel
 $panelFix.Location = New-Object System.Drawing.Point(24,285)
-$panelFix.Size = New-Object System.Drawing.Size(560,170)
+$panelFix.Size = New-Object System.Drawing.Size(540,170)
 $panelFix.BackColor = $bgPanel
 
 $panelTune = New-Object System.Windows.Forms.Panel
 $panelTune.Location = New-Object System.Drawing.Point(24,470)
-$panelTune.Size = New-Object System.Drawing.Size(560,170)
+$panelTune.Size = New-Object System.Drawing.Size(540,170)
 $panelTune.BackColor = $bgPanel
 
 $panelLinks = New-Object System.Windows.Forms.Panel
 $panelLinks.Location = New-Object System.Drawing.Point(24,655)
-$panelLinks.Size = New-Object System.Drawing.Size(560,50)
+$panelLinks.Size = New-Object System.Drawing.Size(540,50)
 $panelLinks.BackColor = $bgPanel
 
-# Titles
-$diagTitle = New-Object System.Windows.Forms.Label
-$diagTitle.Text = "DIAG"
-$diagTitle.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold)
-$diagTitle.ForeColor = $txtMain
-$diagTitle.AutoSize = $true
-$diagTitle.Location = New-Object System.Drawing.Point(14,10)
+function New-SectionTitle {
+    param([string]$Text)
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $Text
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = $txtMain
+    $lbl.AutoSize = $true
+    $lbl.Location = New-Object System.Drawing.Point(14,10)
+    return $lbl
+}
 
-$fixTitle = New-Object System.Windows.Forms.Label
-$fixTitle.Text = "REPAIR"
-$fixTitle.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold)
-$fixTitle.ForeColor = $txtMain
-$fixTitle.AutoSize = $true
-$fixTitle.Location = New-Object System.Drawing.Point(14,10)
+$panelDiag.Controls.Add((New-SectionTitle "DIAGNOSTICO"))
+$panelFix.Controls.Add((New-SectionTitle "REPARO"))
+$panelTune.Controls.Add((New-SectionTitle "OTIMIZACAO"))
+$panelLinks.Controls.Add((New-SectionTitle "LINKS"))
 
-$tuneTitle = New-Object System.Windows.Forms.Label
-$tuneTitle.Text = "TUNE"
-$tuneTitle.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold)
-$tuneTitle.ForeColor = $txtMain
-$tuneTitle.AutoSize = $true
-$tuneTitle.Location = New-Object System.Drawing.Point(14,10)
-
-$linksTitle = New-Object System.Windows.Forms.Label
-$linksTitle.Text = "LINKS"
-$linksTitle.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold)
-$linksTitle.ForeColor = $txtMain
-$linksTitle.AutoSize = $true
-$linksTitle.Location = New-Object System.Drawing.Point(14,12)
-
-$panelDiag.Controls.Add($diagTitle)
-$panelFix.Controls.Add($fixTitle)
-$panelTune.Controls.Add($tuneTitle)
-$panelLinks.Controls.Add($linksTitle)
-
-# =========================
-# OUTPUT PANEL
-# =========================
+# OUTPUT
 $panelOutput = New-Object System.Windows.Forms.Panel
-$panelOutput.Location = New-Object System.Drawing.Point(600,100)
-$panelOutput.Size = New-Object System.Drawing.Size(590,540)
+$panelOutput.Location = New-Object System.Drawing.Point(580,100)
+$panelOutput.Size = New-Object System.Drawing.Size(575,605)
 $panelOutput.BackColor = $bgPanel
 
 $outTitle = New-Object System.Windows.Forms.Label
-$outTitle.Text = "OUTPUT"
+$outTitle.Text = "SAIDA"
 $outTitle.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold)
 $outTitle.ForeColor = $txtMain
 $outTitle.AutoSize = $true
@@ -569,7 +580,7 @@ $outTitle.Location = New-Object System.Drawing.Point(14,10)
 
 $script:txtOutput = New-Object System.Windows.Forms.TextBox
 $script:txtOutput.Location = New-Object System.Drawing.Point(15,40)
-$script:txtOutput.Size = New-Object System.Drawing.Size(560,480)
+$script:txtOutput.Size = New-Object System.Drawing.Size(545,550)
 $script:txtOutput.Multiline = $true
 $script:txtOutput.ScrollBars = "Vertical"
 $script:txtOutput.ReadOnly = $true
@@ -581,11 +592,9 @@ $script:txtOutput.Font = New-Object System.Drawing.Font("Consolas",9)
 $panelOutput.Controls.Add($outTitle)
 $panelOutput.Controls.Add($script:txtOutput)
 
-# =========================
 # STATUS
-# =========================
 $script:lblStatus = New-Object System.Windows.Forms.Label
-$script:lblStatus.Text = "Status: Ready"
+$script:lblStatus.Text = "Status: Pronto"
 $script:lblStatus.Font = New-Object System.Drawing.Font("Segoe UI",10,[System.Drawing.FontStyle]::Bold)
 $script:lblStatus.ForeColor = $okColor
 $script:lblStatus.AutoSize = $true
@@ -593,7 +602,7 @@ $script:lblStatus.Location = New-Object System.Drawing.Point(24,720)
 
 $script:prg = New-Object System.Windows.Forms.ProgressBar
 $script:prg.Location = New-Object System.Drawing.Point(220,721)
-$script:prg.Size = New-Object System.Drawing.Size(370,14)
+$script:prg.Size = New-Object System.Drawing.Size(340,14)
 $script:prg.Style = "Blocks"
 
 $lblLog = New-Object System.Windows.Forms.Label
@@ -601,191 +610,180 @@ $lblLog.Text = "Log: $script:LogFile"
 $lblLog.Font = New-Object System.Drawing.Font("Segoe UI",8)
 $lblLog.ForeColor = $txtSoft
 $lblLog.AutoSize = $true
-$lblLog.Location = New-Object System.Drawing.Point(600,720)
+$lblLog.Location = New-Object System.Drawing.Point(580,720)
 
 # =========================
-# BUTTONS - DIAG
+# BOTOES
 # =========================
-$btnSnapshot = New-LynextButton "SNAPSHOT" 18 42
-$btnPing     = New-LynextButton "PING / JITTER" 196 42
-$btnTrace    = New-LynextButton "TRACEROUTE" 374 42
-$btnPath     = New-LynextButton "PATHPING" 18 92
-$btnDns      = New-LynextButton "RESOLVE DNS" 196 92
-$btnTcp      = New-LynextButton "SHOW TCP" 374 92
+# Diagnostico
+$btnSnapshot = New-LynextButton "SNAPSHOT" 15 42
+$btnPing     = New-LynextButton "PING / JITTER" 185 42
+$btnTrace    = New-LynextButton "TRACEROUTE" 355 42
+$btnPath     = New-LynextButton "PATHPING" 15 95
+$btnDns      = New-LynextButton "RESOLVER DNS" 185 95
+$btnTcp      = New-LynextButton "MOSTRAR TCP" 355 95
 
 $panelDiag.Controls.AddRange(@($btnSnapshot,$btnPing,$btnTrace,$btnPath,$btnDns,$btnTcp))
 
-# =========================
-# BUTTONS - REPAIR
-# =========================
-$btnFlush    = New-LynextButton "FLUSH DNS" 18 42
-$btnWinsock  = New-LynextButton "RESET WINSOCK" 196 42
-$btnResetIp  = New-LynextButton "RESET IP / DHCP" 374 42
-$btnRestart  = New-LynextButton "RESTART ADAPTER" 18 92
-$btnFull     = New-LynextButton "FULL RESET" 196 92
-$btnFirewall = New-LynextButton "RESET FIREWALL" 374 92
+# Reparo
+$btnFlush    = New-LynextButton "FLUSH DNS" 15 42
+$btnWinsock  = New-LynextButton "RESET WINSOCK" 185 42
+$btnResetIp  = New-LynextButton "RESET IP / DHCP" 355 42
+$btnRestart  = New-LynextButton "REINICIAR ADAPTADOR" 15 95
+$btnFull     = New-LynextButton "RESET COMPLETO" 185 95
+$btnFirewall = New-LynextButton "RESET FIREWALL" 355 95
 
 $panelFix.Controls.AddRange(@($btnFlush,$btnWinsock,$btnResetIp,$btnRestart,$btnFull,$btnFirewall))
 
-# =========================
-# BUTTONS - TUNE
-# =========================
-$btnBaseline = New-LynextButton "TCP BASELINE" 18 42
-$btnMtuFind  = New-LynextButton "DISCOVER MTU" 196 42
-$btnMtuSet   = New-LynextButton "APPLY MTU" 374 42
-$btnDnsCF    = New-LynextButton "DNS CLOUDFLARE" 18 92
-$btnDnsGG    = New-LynextButton "DNS GOOGLE" 196 92
-$btnDnsAuto  = New-LynextButton "DNS AUTO" 374 92
+# Otimizacao
+$btnBaseline = New-LynextButton "BASELINE TCP" 15 42
+$btnMtuFind  = New-LynextButton "DESCOBRIR MTU" 185 42
+$btnMtuSet   = New-LynextButton "APLICAR MTU" 355 42
+$btnDnsCF    = New-LynextButton "DNS CLOUDFLARE" 15 95
+$btnDnsGG    = New-LynextButton "DNS GOOGLE" 185 95
+$btnDnsAuto  = New-LynextButton "DNS AUTOMATICO" 355 95
 
 $panelTune.Controls.AddRange(@($btnBaseline,$btnMtuFind,$btnMtuSet,$btnDnsCF,$btnDnsGG,$btnDnsAuto))
 
-# =========================
-# BUTTONS - LINKS
-# =========================
-$btnSpeedWeb = New-LynextButton "SPEEDTEST WEB" 100 4 150 36
-$btnIntel    = New-LynextButton "INTEL DSA" 260 4 120 36
-$btnRealtek  = New-LynextButton "REALTEK" 390 4 120 36
-$btnLogs     = New-LynextButton "OPEN LOGS" 520 4 120 36
-
-# fit panel
-$btnSpeedWeb.Location = New-Object System.Drawing.Point(100,7)
-$btnIntel.Location    = New-Object System.Drawing.Point(255,7)
-$btnRealtek.Location  = New-Object System.Drawing.Point(380,7)
-$btnLogs.Location     = New-Object System.Drawing.Point(505,7)
+# Links
+$btnSpeedWeb = New-LynextButton "SPEEDTEST WEB" 55 7 125 34
+$btnIntel    = New-LynextButton "INTEL DSA" 190 7 110 34
+$btnRealtek  = New-LynextButton "REALTEK" 310 7 100 34
+$btnLogs     = New-LynextButton "ABRIR LOGS" 420 7 105 34
 
 $panelLinks.Controls.AddRange(@($btnSpeedWeb,$btnIntel,$btnRealtek,$btnLogs))
 
 # =========================
 # TOOLTIPS
 # =========================
-$toolTip.SetToolTip($btnSnapshot, "Collect adapters, IP, DNS, gateway and default routes.")
-$toolTip.SetToolTip($btnPing, "Run 20 ICMP tests and show average, min, max, loss and jitter.")
-$toolTip.SetToolTip($btnTrace, "Show route hops to the target.")
-$toolTip.SetToolTip($btnPath, "Longer route test with packet loss per hop.")
-$toolTip.SetToolTip($btnDns, "Resolve common hosts and show current DNS servers.")
-$toolTip.SetToolTip($btnTcp, "Show TCP global settings and offload state.")
+$toolTip.SetToolTip($btnSnapshot, "Coleta adaptadores, IP, gateway, DNS e rota padrao.")
+$toolTip.SetToolTip($btnPing, "Executa 20 testes ICMP e mostra media, min, max, perda e jitter.")
+$toolTip.SetToolTip($btnTrace, "Mostra os saltos ate o destino.")
+$toolTip.SetToolTip($btnPath, "Teste de rota com perda por salto. Pode demorar.")
+$toolTip.SetToolTip($btnDns, "Mostra DNS atual e testa resolucao.")
+$toolTip.SetToolTip($btnTcp, "Mostra estado global do TCP e offloads.")
 
-$toolTip.SetToolTip($btnFlush, "Clear local DNS cache.")
-$toolTip.SetToolTip($btnWinsock, "Reset Winsock catalog. Reboot is recommended.")
-$toolTip.SetToolTip($btnResetIp, "Reset IP stack and renew DHCP lease.")
-$toolTip.SetToolTip($btnRestart, "Restart the active network adapter.")
-$toolTip.SetToolTip($btnFull, "Safe full network reset using supported commands.")
-$toolTip.SetToolTip($btnFirewall, "Restore Windows Firewall defaults.")
+$toolTip.SetToolTip($btnFlush, "Limpa cache DNS local.")
+$toolTip.SetToolTip($btnWinsock, "Reseta catalogo Winsock. Reinicio recomendado.")
+$toolTip.SetToolTip($btnResetIp, "Reseta pilha IP e renova DHCP.")
+$toolTip.SetToolTip($btnRestart, "Reinicia o adaptador ativo.")
+$toolTip.SetToolTip($btnFull, "Executa um reset seguro de rede.")
+$toolTip.SetToolTip($btnFirewall, "Restaura padroes do firewall do Windows.")
 
-$toolTip.SetToolTip($btnBaseline, "Restore a safe TCP baseline with autotuning normal and RSS enabled.")
-$toolTip.SetToolTip($btnMtuFind, "Find suggested IPv4 MTU using binary search.")
-$toolTip.SetToolTip($btnMtuSet, "Apply MTU to a specific adapter.")
-$toolTip.SetToolTip($btnDnsCF, "Set Cloudflare DNS on active adapter.")
-$toolTip.SetToolTip($btnDnsGG, "Set Google DNS on active adapter.")
-$toolTip.SetToolTip($btnDnsAuto, "Restore DNS from DHCP.")
+$toolTip.SetToolTip($btnBaseline, "Aplica baseline segura de TCP.")
+$toolTip.SetToolTip($btnMtuFind, "Descobre MTU sugerido por teste real.")
+$toolTip.SetToolTip($btnMtuSet, "Aplica MTU no adaptador escolhido.")
+$toolTip.SetToolTip($btnDnsCF, "Define DNS Cloudflare no adaptador ativo.")
+$toolTip.SetToolTip($btnDnsGG, "Define DNS Google no adaptador ativo.")
+$toolTip.SetToolTip($btnDnsAuto, "Restaura DNS do DHCP.")
 
-$toolTip.SetToolTip($btnSpeedWeb, "Open Cloudflare speed test in the browser.")
-$toolTip.SetToolTip($btnIntel, "Open Intel Driver and Support Assistant.")
-$toolTip.SetToolTip($btnRealtek, "Open Realtek download page.")
-$toolTip.SetToolTip($btnLogs, "Open Lynext log folder.")
+$toolTip.SetToolTip($btnSpeedWeb, "Abre speed.cloudflare.com")
+$toolTip.SetToolTip($btnIntel, "Abre Intel Driver and Support Assistant.")
+$toolTip.SetToolTip($btnRealtek, "Abre portal Realtek.")
+$toolTip.SetToolTip($btnLogs, "Abre pasta de logs do Lynext.")
 
 # =========================
-# EVENTS - DIAG
+# EVENTOS - DIAGNOSTICO
 # =========================
 $btnSnapshot.Add_Click({
-    $code = @"
-'=== ADAPTERS ==='
+$code = @"
+'=== ADAPTADORES ==='
 Get-NetAdapter | Sort-Object Status, Name | Format-Table -Auto Name, InterfaceDescription, Status, LinkSpeed, MacAddress
 
 '`n=== IP CONFIG ==='
 Get-NetIPConfiguration -All | Format-List InterfaceAlias, InterfaceIndex, IPv4Address, IPv6Address, IPv4DefaultGateway, DNSServer
 
-'`n=== PROFILE ==='
+'`n=== PERFIL ==='
 Get-NetConnectionProfile | Format-Table -Auto Name, InterfaceAlias, NetworkCategory, IPv4Connectivity, IPv6Connectivity
 
 '`n=== DNS ==='
 Get-DnsClientServerAddress | Format-Table -Auto InterfaceAlias, AddressFamily, ServerAddresses
 
-'`n=== DEFAULT ROUTE ==='
+'`n=== ROTA PADRAO ==='
 Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Sort-Object RouteMetric | Format-Table -Auto ifIndex, InterfaceAlias, NextHop, RouteMetric
 "@
-    Start-LynextAction -Name "Snapshot" -Code $code
+    Start-LynextTask -Name "Snapshot" -Code $code
 })
 
 $btnPing.Add_Click({
-    $target = Show-InputDialog -Title "Ping / Jitter" -Label "Host or IP:" -DefaultValue "1.1.1.1"
+    $target = Show-InputDialog -Title "Ping / Jitter" -Label "Host ou IP:" -DefaultValue "1.1.1.1"
     if ([string]::IsNullOrWhiteSpace($target)) { return }
-    Start-LynextAction -Name "Ping / Jitter for $target" -Code (Get-PingJitterCode -Target $target)
+    Start-LynextTask -Name "Ping / Jitter para $target" -Code (Get-PingJitterCode -Target $target)
 })
 
 $btnTrace.Add_Click({
-    $target = Show-InputDialog -Title "Traceroute" -Label "Host or IP:" -DefaultValue "1.1.1.1"
+    $target = Show-InputDialog -Title "Traceroute" -Label "Host ou IP:" -DefaultValue "1.1.1.1"
     if ([string]::IsNullOrWhiteSpace($target)) { return }
-    Start-LynextAction -Name "Traceroute for $target" -Code (Get-TracertCode -Target $target)
+    Start-LynextTask -Name "Traceroute para $target" -Code (Get-TracertCode -Target $target)
 })
 
 $btnPath.Add_Click({
-    $target = Show-InputDialog -Title "Pathping" -Label "Host or IP:" -DefaultValue "1.1.1.1"
+    $target = Show-InputDialog -Title "Pathping" -Label "Host ou IP:" -DefaultValue "1.1.1.1"
     if ([string]::IsNullOrWhiteSpace($target)) { return }
-    Start-LynextAction -Name "Pathping for $target" -Code (Get-PathPingCode -Target $target)
+    Start-LynextTask -Name "Pathping para $target" -Code (Get-PathPingCode -Target $target)
 })
 
 $btnDns.Add_Click({
-    $code = @"
-'=== CURRENT DNS ==='
+$code = @"
+'=== DNS ATUAL ==='
 Get-DnsClientServerAddress | Format-Table -Auto InterfaceAlias, AddressFamily, ServerAddresses
 
-'`n=== RESOLVE DNS ==='
+'`n=== TESTE DE RESOLUCAO ==='
 Resolve-DnsName -Name 'www.cloudflare.com' -Type A | Format-Table -Auto Name, Type, IPAddress, TTL
 Resolve-DnsName -Name 'www.google.com' -Type A | Format-Table -Auto Name, Type, IPAddress, TTL
 "@
-    Start-LynextAction -Name "Resolve DNS" -Code $code
+    Start-LynextTask -Name "Resolver DNS" -Code $code
 })
 
 $btnTcp.Add_Click({
-    $code = @"
+$code = @"
 netsh int tcp show global
 '`n=== TCP SETTINGS ==='
 Get-NetTCPSetting | Select-Object SettingName, AutoTuningLevelLocal, CongestionProvider | Format-Table -Auto
 '`n=== OFFLOAD GLOBAL ==='
 Get-NetOffloadGlobalSetting | Format-List
 "@
-    Start-LynextAction -Name "Show TCP" -Code $code
+    Start-LynextTask -Name "Mostrar TCP" -Code $code
 })
 
 # =========================
-# EVENTS - REPAIR
+# EVENTOS - REPARO
 # =========================
 $btnFlush.Add_Click({
-    Start-LynextAction -Name "Flush DNS" -Code "ipconfig /flushdns"
+    Start-LynextTask -Name "Flush DNS" -Code "ipconfig /flushdns"
 })
 
 $btnWinsock.Add_Click({
-    $code = @"
+$code = @"
 netsh winsock reset
-'Reboot recommended: YES'
+'Reinicio recomendado: SIM'
 "@
-    Start-LynextAction -Name "Reset Winsock" -Code $code
+    Start-LynextTask -Name "Reset Winsock" -Code $code
 })
 
 $btnResetIp.Add_Click({
-    $code = @"
+$code = @"
 netsh int ip reset
 ipconfig /release
 Start-Sleep -Seconds 1
 ipconfig /renew
-'Reboot recommended: YES'
+'Reinicio recomendado: SIM'
 "@
-    Start-LynextAction -Name "Reset IP / DHCP" -Code $code
+    Start-LynextTask -Name "Reset IP / DHCP" -Code $code
 })
 
 $btnRestart.Add_Click({
-    $code = @"
+$code = @"
 `$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
-if (-not `$nic) { throw 'No active adapter found.' }
+if (-not `$nic) { throw 'Nenhum adaptador ativo encontrado.' }
 Restart-NetAdapter -Name `$nic.Name -Confirm:`$false
 Get-NetAdapter -Name `$nic.Name | Format-Table -Auto Name, Status, LinkSpeed
 "@
-    Start-LynextAction -Name "Restart Adapter" -Code $code
+    Start-LynextTask -Name "Reiniciar adaptador" -Code $code
 })
 
 $btnFull.Add_Click({
-    $code = @"
+$code = @"
 `$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
 ipconfig /flushdns
 try { Restart-Service Dnscache -Force -ErrorAction Stop } catch {}
@@ -799,113 +797,123 @@ nbtstat -RR
 if (`$nic) {
     Restart-NetAdapter -Name `$nic.Name -Confirm:`$false
 }
-'Reboot recommended: YES'
+'Reinicio recomendado: SIM'
 "@
-    Start-LynextAction -Name "Full Reset" -Code $code -Confirm -ConfirmMessage "Run full network reset now?"
+    Start-LynextTask -Name "Reset completo" -Code $code -Confirm -ConfirmMessage "Executar reset completo de rede?"
 })
 
 $btnFirewall.Add_Click({
-    $code = @"
+$code = @"
 netsh advfirewall reset
-'Warning: custom firewall rules may be removed.'
+'Aviso: regras personalizadas do firewall podem ser removidas.'
 "@
-    Start-LynextAction -Name "Reset Firewall" -Code $code -Confirm -ConfirmMessage "Reset Windows Firewall defaults?"
+    Start-LynextTask -Name "Reset Firewall" -Code $code -Confirm -ConfirmMessage "Resetar o firewall do Windows?"
 })
 
 # =========================
-# EVENTS - TUNE
+# EVENTOS - OTIMIZACAO
 # =========================
 $btnBaseline.Add_Click({
-    $code = @"
+$code = @"
 netsh int tcp set global autotuninglevel=normal
 netsh int tcp set global rss=enabled
 '---'
 netsh int tcp show global
 "@
-    Start-LynextAction -Name "TCP Baseline" -Code $code
+    Start-LynextTask -Name "Baseline TCP" -Code $code
 })
 
 $btnMtuFind.Add_Click({
-    $target = Show-InputDialog -Title "Discover MTU" -Label "Host or IP:" -DefaultValue "1.1.1.1"
+    $target = Show-InputDialog -Title "Descobrir MTU" -Label "Host ou IP:" -DefaultValue "1.1.1.1"
     if ([string]::IsNullOrWhiteSpace($target)) { return }
-    Start-LynextAction -Name "Discover MTU for $target" -Code (Get-MtuDiscoveryCode -Target $target)
+    Start-LynextTask -Name "Descobrir MTU para $target" -Code (Get-MtuDiscoveryCode -Target $target)
 })
 
 $btnMtuSet.Add_Click({
-    $alias = Show-InputDialog -Title "Apply MTU" -Label "Adapter alias:" -DefaultValue (Get-ActiveAdapterName)
+    $alias = Show-InputDialog -Title "Aplicar MTU" -Label "Nome do adaptador:" -DefaultValue (Get-ActiveAdapterName)
     if ([string]::IsNullOrWhiteSpace($alias)) { return }
 
-    $mtuText = Show-InputDialog -Title "Apply MTU" -Label "MTU value:" -DefaultValue "1492"
+    $mtuText = Show-InputDialog -Title "Aplicar MTU" -Label "Valor do MTU:" -DefaultValue "1492"
     if ([string]::IsNullOrWhiteSpace($mtuText)) { return }
 
     [int]$mtu = 0
     if (-not [int]::TryParse($mtuText, [ref]$mtu)) {
-        [System.Windows.Forms.MessageBox]::Show("Invalid MTU value.", "Lynext", "OK", "Error") | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Valor de MTU invalido.", "Lynext", "OK", "Error") | Out-Null
         return
     }
 
-    Start-LynextAction -Name "Apply MTU $mtu on $alias" -Code (Get-SetMtuCode -Alias $alias -Mtu $mtu) -Confirm -ConfirmMessage "Apply MTU $mtu on adapter '$alias'?"
+    Start-LynextTask -Name "Aplicar MTU $mtu em $alias" -Code (Get-SetMtuCode -Alias $alias -Mtu $mtu) -Confirm -ConfirmMessage "Aplicar MTU $mtu em '$alias'?"
 })
 
 $btnDnsCF.Add_Click({
-    $code = @"
+$code = @"
 `$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
-if (-not `$nic) { throw 'No active adapter found.' }
+if (-not `$nic) { throw 'Nenhum adaptador ativo encontrado.' }
 Set-DnsClientServerAddress -InterfaceAlias `$nic.Name -ServerAddresses 1.1.1.1,1.0.0.1
 Get-DnsClientServerAddress -InterfaceAlias `$nic.Name | Format-Table -Auto InterfaceAlias, ServerAddresses
 "@
-    Start-LynextAction -Name "DNS Cloudflare" -Code $code
+    Start-LynextTask -Name "DNS Cloudflare" -Code $code
 })
 
 $btnDnsGG.Add_Click({
-    $code = @"
+$code = @"
 `$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
-if (-not `$nic) { throw 'No active adapter found.' }
+if (-not `$nic) { throw 'Nenhum adaptador ativo encontrado.' }
 Set-DnsClientServerAddress -InterfaceAlias `$nic.Name -ServerAddresses 8.8.8.8,8.8.4.4
 Get-DnsClientServerAddress -InterfaceAlias `$nic.Name | Format-Table -Auto InterfaceAlias, ServerAddresses
 "@
-    Start-LynextAction -Name "DNS Google" -Code $code
+    Start-LynextTask -Name "DNS Google" -Code $code
 })
 
 $btnDnsAuto.Add_Click({
-    $code = @"
+$code = @"
 `$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
-if (-not `$nic) { throw 'No active adapter found.' }
+if (-not `$nic) { throw 'Nenhum adaptador ativo encontrado.' }
 Set-DnsClientServerAddress -InterfaceAlias `$nic.Name -ResetServerAddresses
 Get-DnsClientServerAddress -InterfaceAlias `$nic.Name | Format-Table -Auto InterfaceAlias, ServerAddresses
 "@
-    Start-LynextAction -Name "DNS Auto" -Code $code
+    Start-LynextTask -Name "DNS automatico" -Code $code
 })
 
 # =========================
-# EVENTS - LINKS
+# EVENTOS - LINKS
 # =========================
 $btnSpeedWeb.Add_Click({
     Start-Process "https://speed.cloudflare.com/"
-    Set-Status "Speedtest web opened." "ok"
+    Set-Status "Speedtest web aberto." "ok"
     Write-Log "Opened speedtest web"
 })
 
 $btnIntel.Add_Click({
     Start-Process "https://www.intel.com.br/content/www/br/pt/support/detect.html"
-    Set-Status "Intel DSA opened." "ok"
+    Set-Status "Intel DSA aberto." "ok"
     Write-Log "Opened Intel DSA"
 })
 
 $btnRealtek.Add_Click({
     Start-Process "https://www.realtek.com/Download/Overview?menu_id=355"
-    Set-Status "Realtek page opened." "ok"
-    Write-Log "Opened Realtek page"
+    Set-Status "Portal Realtek aberto." "ok"
+    Write-Log "Opened Realtek"
 })
 
 $btnLogs.Add_Click({
     Start-Process explorer.exe $script:LogDir
-    Set-Status "Log folder opened." "ok"
-    Write-Log "Opened log folder"
+    Set-Status "Pasta de logs aberta." "ok"
+    Write-Log "Opened logs folder"
 })
 
 # =========================
-# ADD CONTROLS
+# TIMER
+# =========================
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 350
+$timer.Add_Tick({
+    Poll-LynextTask
+})
+$timer.Start()
+
+# =========================
+# ADD
 # =========================
 $form.Controls.AddRange(@(
     $lblTitle,
@@ -921,9 +929,9 @@ $form.Controls.AddRange(@(
     $lblLog
 ))
 
-Append-Output "Lynext Network Center started."
-Append-Output "Logs: $script:LogFile"
-Write-Log "Lynext Network Center started"
-Set-Status "Ready" "ok"
+Append-Output "Lynext Rede iniciado."
+Append-Output "Log: $script:LogFile"
+Write-Log "Lynext Rede iniciado"
+Set-Status "Pronto" "ok"
 
 [void]$form.ShowDialog()
