@@ -196,7 +196,7 @@ $form.ForeColor = $fgMain
 $titulo = Criar-Label "Central de Downloads" 225 18 16 $true
 $form.Controls.Add($titulo)
 
-$subtitulo = Criar-Label "Automatico separado do manual, com visual dark" 190 48 9 $false $fgSoft
+$subtitulo = Criar-Label "Created by RyanGXD" 265 48 9 $false $fgSoft
 $form.Controls.Add($subtitulo)
 
 # =========================
