@@ -1,3 +1,10 @@
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    exit
+}
+
 $baseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
 $installDir = Join-Path $env:TEMP "Lynext"
 
