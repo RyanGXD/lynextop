@@ -1,6 +1,5 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName Microsoft.VisualBasic
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -19,9 +18,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 # GLOBAL
 # =========================
 $script:LogDir = Join-Path $env:TEMP "Lynext\Logs"
-$null = New-Item -ItemType Directory -Path $script:LogDir -Force
-
+$null = New-Item -Path $script:LogDir -ItemType Directory -Force
 $script:LogFile = Join-Path $script:LogDir ("NetworkApp_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+
 $script:Task = $null
 $script:IsBusy = $false
 
@@ -183,6 +182,110 @@ function Show-InputDialog {
     $result = $f.ShowDialog()
 
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        return [string]$f.Tag
+    }
+
+    return $null
+}
+
+function Select-AdapterDialog {
+    $f = New-Object System.Windows.Forms.Form
+    $f.Text = "Selecionar adaptador"
+    $f.Size = New-Object System.Drawing.Size(430,190)
+    $f.StartPosition = "CenterParent"
+    $f.FormBorderStyle = "FixedDialog"
+    $f.MaximizeBox = $false
+    $f.MinimizeBox = $false
+    $f.BackColor = $bgMain
+    $f.ForeColor = $txtMain
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "Escolha o adaptador de rede:"
+    $lbl.Location = New-Object System.Drawing.Point(15,18)
+    $lbl.Size = New-Object System.Drawing.Size(380,20)
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI",9)
+    $lbl.ForeColor = $txtMain
+
+    $cmb = New-Object System.Windows.Forms.ComboBox
+    $cmb.Location = New-Object System.Drawing.Point(15,50)
+    $cmb.Size = New-Object System.Drawing.Size(385,28)
+    $cmb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $cmb.BackColor = $bgPanel2
+    $cmb.ForeColor = $txtMain
+    $cmb.FlatStyle = "Flat"
+    $cmb.Font = New-Object System.Drawing.Font("Segoe UI",9)
+
+    try {
+        $adaptadores = Get-NetAdapter | Sort-Object Status, Name
+        foreach ($ad in $adaptadores) {
+            $status = if ($ad.Status) { [string]$ad.Status } else { "Desconhecido" }
+            $item = "{0} [{1}]" -f $ad.Name, $status
+            [void]$cmb.Items.Add($item)
+        }
+
+        $preferido = -1
+        for ($i = 0; $i -lt $adaptadores.Count; $i++) {
+            if ($adaptadores[$i].Status -eq "Up") {
+                $preferido = $i
+                break
+            }
+        }
+
+        if ($preferido -ge 0) {
+            $cmb.SelectedIndex = $preferido
+        }
+        elseif ($cmb.Items.Count -gt 0) {
+            $cmb.SelectedIndex = 0
+        }
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show("Falha ao listar adaptadores.", "Lynext", "OK", "Error") | Out-Null
+        return $null
+    }
+
+    $lblInfo = New-Object System.Windows.Forms.Label
+    $lblInfo.Text = "Exemplo: Ethernet, Wi-Fi, Radmin."
+    $lblInfo.Location = New-Object System.Drawing.Point(15,85)
+    $lblInfo.Size = New-Object System.Drawing.Size(380,18)
+    $lblInfo.Font = New-Object System.Drawing.Font("Segoe UI",8)
+    $lblInfo.ForeColor = $txtSoft
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = "OK"
+    $ok.Location = New-Object System.Drawing.Point(235,112)
+    $ok.Size = New-Object System.Drawing.Size(80,30)
+    $ok.FlatStyle = "Flat"
+    $ok.BackColor = $bgButton
+    $ok.ForeColor = $txtMain
+    $ok.FlatAppearance.BorderColor = $borderColor
+
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = "Cancelar"
+    $cancel.Location = New-Object System.Drawing.Point(320,112)
+    $cancel.Size = New-Object System.Drawing.Size(80,30)
+    $cancel.FlatStyle = "Flat"
+    $cancel.BackColor = $bgButton
+    $cancel.ForeColor = $txtMain
+    $cancel.FlatAppearance.BorderColor = $borderColor
+
+    $ok.Add_Click({
+        if ($cmb.SelectedIndex -ge 0) {
+            $f.Tag = $adaptadores[$cmb.SelectedIndex].Name
+            $f.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $f.Close()
+        }
+    })
+
+    $cancel.Add_Click({
+        $f.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+        $f.Close()
+    })
+
+    $f.Controls.AddRange(@($lbl,$cmb,$lblInfo,$ok,$cancel))
+    $f.AcceptButton = $ok
+    $f.CancelButton = $cancel
+
+    if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         return [string]$f.Tag
     }
 
@@ -663,24 +766,24 @@ $toolTip.SetToolTip($btnPath, "Teste de rota com perda por salto. Pode demorar."
 $toolTip.SetToolTip($btnDns, "Mostra DNS atual e testa resolucao.")
 $toolTip.SetToolTip($btnTcp, "Mostra estado global do TCP e offloads.")
 
-$toolTip.SetToolTip($btnFlush, "Limpa cache DNS local.")
-$toolTip.SetToolTip($btnWinsock, "Reseta catalogo Winsock. Reinicio recomendado.")
-$toolTip.SetToolTip($btnResetIp, "Reseta pilha IP e renova DHCP.")
+$toolTip.SetToolTip($btnFlush, "Limpa o cache DNS local.")
+$toolTip.SetToolTip($btnWinsock, "Reseta o catalogo Winsock. Reinicio recomendado.")
+$toolTip.SetToolTip($btnResetIp, "Reseta a pilha IP e renova o DHCP.")
 $toolTip.SetToolTip($btnRestart, "Reinicia o adaptador ativo.")
 $toolTip.SetToolTip($btnFull, "Executa um reset seguro de rede.")
-$toolTip.SetToolTip($btnFirewall, "Restaura padroes do firewall do Windows.")
+$toolTip.SetToolTip($btnFirewall, "Restaura os padroes do firewall do Windows.")
 
 $toolTip.SetToolTip($btnBaseline, "Aplica baseline segura de TCP.")
-$toolTip.SetToolTip($btnMtuFind, "Descobre MTU sugerido por teste real.")
+$toolTip.SetToolTip($btnMtuFind, "Descobre um MTU sugerido por teste real.")
 $toolTip.SetToolTip($btnMtuSet, "Aplica MTU no adaptador escolhido.")
-$toolTip.SetToolTip($btnDnsCF, "Define DNS Cloudflare no adaptador ativo.")
-$toolTip.SetToolTip($btnDnsGG, "Define DNS Google no adaptador ativo.")
-$toolTip.SetToolTip($btnDnsAuto, "Restaura DNS do DHCP.")
+$toolTip.SetToolTip($btnDnsCF, "Pergunta o adaptador e aplica DNS Cloudflare.")
+$toolTip.SetToolTip($btnDnsGG, "Pergunta o adaptador e aplica DNS Google.")
+$toolTip.SetToolTip($btnDnsAuto, "Pergunta o adaptador e restaura DNS automatico.")
 
 $toolTip.SetToolTip($btnSpeedWeb, "Abre speed.cloudflare.com")
 $toolTip.SetToolTip($btnIntel, "Abre Intel Driver and Support Assistant.")
-$toolTip.SetToolTip($btnRealtek, "Abre portal Realtek.")
-$toolTip.SetToolTip($btnLogs, "Abre pasta de logs do Lynext.")
+$toolTip.SetToolTip($btnRealtek, "Abre o portal da Realtek.")
+$toolTip.SetToolTip($btnLogs, "Abre a pasta de logs do Lynext.")
 
 # =========================
 # EVENTOS - DIAGNOSTICO
@@ -830,7 +933,7 @@ $btnMtuFind.Add_Click({
 })
 
 $btnMtuSet.Add_Click({
-    $alias = Show-InputDialog -Title "Aplicar MTU" -Label "Nome do adaptador:" -DefaultValue (Get-ActiveAdapterName)
+    $alias = Select-AdapterDialog
     if ([string]::IsNullOrWhiteSpace($alias)) { return }
 
     $mtuText = Show-InputDialog -Title "Aplicar MTU" -Label "Valor do MTU:" -DefaultValue "1492"
@@ -846,33 +949,39 @@ $btnMtuSet.Add_Click({
 })
 
 $btnDnsCF.Add_Click({
+    $adaptador = Select-AdapterDialog
+    if ([string]::IsNullOrWhiteSpace($adaptador)) { return }
+
+    $a = Escape-SQ $adaptador
 $code = @"
-`$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
-if (-not `$nic) { throw 'Nenhum adaptador ativo encontrado.' }
-Set-DnsClientServerAddress -InterfaceAlias `$nic.Name -ServerAddresses 1.1.1.1,1.0.0.1
-Get-DnsClientServerAddress -InterfaceAlias `$nic.Name | Format-Table -Auto InterfaceAlias, ServerAddresses
+Set-DnsClientServerAddress -InterfaceAlias '$a' -ServerAddresses 1.1.1.1,1.0.0.1
+Get-DnsClientServerAddress -InterfaceAlias '$a' | Format-Table -Auto InterfaceAlias, ServerAddresses
 "@
-    Start-LynextTask -Name "DNS Cloudflare" -Code $code
+    Start-LynextTask -Name "DNS Cloudflare em $adaptador" -Code $code
 })
 
 $btnDnsGG.Add_Click({
+    $adaptador = Select-AdapterDialog
+    if ([string]::IsNullOrWhiteSpace($adaptador)) { return }
+
+    $a = Escape-SQ $adaptador
 $code = @"
-`$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
-if (-not `$nic) { throw 'Nenhum adaptador ativo encontrado.' }
-Set-DnsClientServerAddress -InterfaceAlias `$nic.Name -ServerAddresses 8.8.8.8,8.8.4.4
-Get-DnsClientServerAddress -InterfaceAlias `$nic.Name | Format-Table -Auto InterfaceAlias, ServerAddresses
+Set-DnsClientServerAddress -InterfaceAlias '$a' -ServerAddresses 8.8.8.8,8.8.4.4
+Get-DnsClientServerAddress -InterfaceAlias '$a' | Format-Table -Auto InterfaceAlias, ServerAddresses
 "@
-    Start-LynextTask -Name "DNS Google" -Code $code
+    Start-LynextTask -Name "DNS Google em $adaptador" -Code $code
 })
 
 $btnDnsAuto.Add_Click({
+    $adaptador = Select-AdapterDialog
+    if ([string]::IsNullOrWhiteSpace($adaptador)) { return }
+
+    $a = Escape-SQ $adaptador
 $code = @"
-`$nic = Get-NetAdapter | Where-Object { `$_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1
-if (-not `$nic) { throw 'Nenhum adaptador ativo encontrado.' }
-Set-DnsClientServerAddress -InterfaceAlias `$nic.Name -ResetServerAddresses
-Get-DnsClientServerAddress -InterfaceAlias `$nic.Name | Format-Table -Auto InterfaceAlias, ServerAddresses
+Set-DnsClientServerAddress -InterfaceAlias '$a' -ResetServerAddresses
+Get-DnsClientServerAddress -InterfaceAlias '$a' | Format-Table -Auto InterfaceAlias, ServerAddresses
 "@
-    Start-LynextTask -Name "DNS automatico" -Code $code
+    Start-LynextTask -Name "DNS automatico em $adaptador" -Code $code
 })
 
 # =========================
