@@ -41,7 +41,7 @@ try {
         Write-Host "Abrindo MainMenu.ps1..."
         Write-Host ""
 
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File $mainMenu
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File "`"$mainMenu`""
     }
     else {
         Write-Host "Erro: MainMenu.ps1 nao foi encontrado."
