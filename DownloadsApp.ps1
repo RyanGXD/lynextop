@@ -18,23 +18,24 @@ $repoBaseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
 $bgMain      = [System.Drawing.Color]::FromArgb(14,14,18)
 $bgPanel     = [System.Drawing.Color]::FromArgb(22,22,30)
 $bgPanel2    = [System.Drawing.Color]::FromArgb(28,28,38)
-$bgButton    = [System.Drawing.Color]::FromArgb(40,40,55)
-$bgButton2   = [System.Drawing.Color]::FromArgb(58,58,76)
-$bgList      = [System.Drawing.Color]::FromArgb(18,18,24)
+$bgButton    = [System.Drawing.Color]::FromArgb(44,44,58)
+$bgButton2   = [System.Drawing.Color]::FromArgb(60,60,78)
+$bgList      = [System.Drawing.Color]::FromArgb(16,16,22)
 
-$fgMain      = [System.Drawing.Color]::FromArgb(230,230,235)
-$fgSoft      = [System.Drawing.Color]::FromArgb(160,160,178)
-$fgMuted     = [System.Drawing.Color]::FromArgb(125,125,145)
+$fgMain      = [System.Drawing.Color]::FromArgb(232,232,238)
+$fgSoft      = [System.Drawing.Color]::FromArgb(165,165,182)
+$fgMuted     = [System.Drawing.Color]::FromArgb(128,128,146)
 
 $accent      = [System.Drawing.Color]::FromArgb(132,108,186)
-$accentSoft  = [System.Drawing.Color]::FromArgb(88,72,128)
+$accentSoft  = [System.Drawing.Color]::FromArgb(90,76,132)
 
 $okColor     = [System.Drawing.Color]::FromArgb(110,200,140)
 $errColor    = [System.Drawing.Color]::FromArgb(220,100,100)
 $runColor    = [System.Drawing.Color]::FromArgb(220,180,100)
 $manualColor = [System.Drawing.Color]::FromArgb(120,175,235)
 
-$borderColor = [System.Drawing.Color]::FromArgb(66,66,86)
+$borderColor = [System.Drawing.Color]::FromArgb(72,72,90)
+$tabBackColor = [System.Drawing.Color]::FromArgb(52,52,62)
 
 # =========================
 # BASE DE APPS
@@ -723,7 +724,7 @@ function CriarAbaCategoria {
     $tab.BackColor = $bgMain
     $tab.ForeColor = $fgMain
 
-    $painelEsquerdo = Criar-Painel 16 18 400 520 $bgPanel
+    $painelEsquerdo = Criar-Painel 16 18 400 540 $bgPanel
     $tab.Controls.Add($painelEsquerdo)
 
     $lblAuto = Criar-Label "Automatico" 16 14 11 $true $accent
@@ -744,7 +745,7 @@ function CriarAbaCategoria {
     $listaManual = Criar-Lista 16 306 365 180
     $painelEsquerdo.Controls.Add($listaManual)
 
-    $painelDireito = Criar-Painel 432 18 430 520 $bgPanel2
+    $painelDireito = Criar-Painel 432 18 430 540 $bgPanel2
     $tab.Controls.Add($painelDireito)
 
     $detTitulo = Criar-Label "Selecione um app" 16 18 15 $true $fgMain
@@ -766,17 +767,17 @@ function CriarAbaCategoria {
     $detDesc.Text = "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
     $painelDireito.Controls.Add($detDesc)
 
-    $detStatusTitulo = Criar-Label "Status" 16 366 11 $true $accent
+    $detStatusTitulo = Criar-Label "Status" 16 378 11 $true $accent
     $painelDireito.Controls.Add($detStatusTitulo)
 
-    $detStatus = Criar-Label "Aguardando selecao." 16 392 10 $false $fgSoft
+    $detStatus = Criar-Label "Aguardando selecao." 16 404 10 $false $fgSoft
     $painelDireito.Controls.Add($detStatus)
 
-    $btnAcao = Criar-Botao "Selecionar app" 16 435 180 36
+    $btnAcao = Criar-Botao "Selecionar app" 16 455 180 36
     $btnAcao.Enabled = $false
     $painelDireito.Controls.Add($btnAcao)
 
-    $btnPasta = Criar-Botao "Abrir pasta" 212 435 140 36
+    $btnPasta = Criar-Botao "Abrir pasta" 212 455 140 36
     $painelDireito.Controls.Add($btnPasta)
 
     $itemsCategoria = $apps | Where-Object { $_.Categoria -eq $Categoria }
@@ -787,16 +788,16 @@ function CriarAbaCategoria {
     PopularListaApps -Lista $listaManual -Itens $itemsManual
 
     $categoryViews[$Categoria] = [PSCustomObject]@{
-        Tab       = $tab
-        ListaAuto = $listaAuto
+        Tab         = $tab
+        ListaAuto   = $listaAuto
         ListaManual = $listaManual
-        Titulo    = $detTitulo
-        Tipo      = $detTipo
-        Fonte     = $detFonte
-        Arquivo   = $detArquivo
-        Descricao = $detDesc
-        Status    = $detStatus
-        Acao      = $btnAcao
+        Titulo      = $detTitulo
+        Tipo        = $detTipo
+        Fonte       = $detFonte
+        Arquivo     = $detArquivo
+        Descricao   = $detDesc
+        Status      = $detStatus
+        Acao        = $btnAcao
     }
 
     $listaAuto.Add_SelectedIndexChanged({
@@ -841,7 +842,7 @@ function CriarAbaCategoria {
 # =========================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Lynext - Downloads"
-$form.Size = New-Object System.Drawing.Size(900, 700)
+$form.Size = New-Object System.Drawing.Size(920, 780)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
@@ -850,38 +851,44 @@ $form.Topmost = $true
 $form.BackColor = $bgMain
 $form.ForeColor = $fgMain
 
-$titulo = Criar-Label "Central de Downloads" 330 16 17 $true $fgMain
+$titulo = Criar-Label "Central de Downloads" 320 20 17 $true $fgMain
 $form.Controls.Add($titulo)
 
-$subtitulo = Criar-Label "Performance, monitoramento e suporte" 312 44 9 $false $fgSoft
+$subtitulo = Criar-Label "Performance, monitoramento e suporte" 300 52 9 $false $fgSoft
 $form.Controls.Add($subtitulo)
 
 $tabControl = New-Object System.Windows.Forms.TabControl
-$tabControl.Location = New-Object System.Drawing.Point(12, 78)
-$tabControl.Size = New-Object System.Drawing.Size(875, 565)
+$tabControl.Location = New-Object System.Drawing.Point(12, 92)
+$tabControl.Size = New-Object System.Drawing.Size(890, 600)
 $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$tabControl.BackColor = $tabBackColor
 $form.Controls.Add($tabControl)
 
 CriarAbaCategoria -Categoria "Performance" -TabControl $tabControl
 CriarAbaCategoria -Categoria "Monitoramento" -TabControl $tabControl
 CriarAbaCategoria -Categoria "Suporte" -TabControl $tabControl
 
+foreach ($tab in $tabControl.TabPages) {
+    $tab.BackColor = $bgMain
+    $tab.ForeColor = $fgMain
+}
+
 # =========================
 # RODAPE
 # =========================
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = New-Object System.Drawing.Point(16, 648)
-$progress.Size = New-Object System.Drawing.Size(540, 18)
+$progress.Location = New-Object System.Drawing.Point(16, 710)
+$progress.Size = New-Object System.Drawing.Size(560, 18)
 $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $progress.Minimum = 0
 $progress.Maximum = 100
 $progress.Value = 0
 $form.Controls.Add($progress)
 
-$geral = Criar-Label "Pronto para iniciar." 16 668 9 $false $fgSoft
+$geral = Criar-Label "Pronto para iniciar." 16 732 9 $false $fgSoft
 $form.Controls.Add($geral)
 
-$btnFechar = Criar-Botao "Fechar" 785 642 90 34
+$btnFechar = Criar-Botao "Fechar" 795 704 90 34
 $form.Controls.Add($btnFechar)
 
 $btnFechar.Add_Click({
