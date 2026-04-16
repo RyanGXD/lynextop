@@ -1,13 +1,6 @@
-$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
-    exit
-}
-
+$loaderUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main/lynext.ps1"
 $baseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
 $installDir = Join-Path $env:TEMP "Lynext"
-
 $files = @(
     "MainMenu.ps1",
     "DownloadsApp.ps1",
@@ -15,13 +8,35 @@ $files = @(
     "PerformanceApp.ps1"
 )
 
+function Test-LynextAdmin {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Start-LynextElevated {
+    $command = "irm '$loaderUrl' | iex"
+
+    Start-Process powershell.exe -Verb RunAs -ArgumentList @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-Command", $command
+    ) | Out-Null
+}
+
 Write-Host "====================================="
 Write-Host "            LYNEXT LOADER"
 Write-Host "====================================="
 Write-Host ""
 
+if (-not (Test-LynextAdmin)) {
+    Write-Host "Solicitando permissao de administrador..."
+    Start-LynextElevated
+    exit
+}
+
 try {
-    if (!(Test-Path $installDir)) {
+    if (-not (Test-Path $installDir)) {
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     }
 
@@ -29,29 +44,28 @@ try {
         $url = "$baseUrl/$file"
         $dest = Join-Path $installDir $file
 
-        Write-Host "Baixando $file ..."
-        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+        Write-Host "Baixando $file..."
+        Invoke-WebRequest -Uri $url -OutFile $dest
     }
 
     $mainMenu = Join-Path $installDir "MainMenu.ps1"
 
-    if (Test-Path $mainMenu) {
-        Write-Host ""
-        Write-Host "Download concluido com sucesso!"
-        Write-Host "Abrindo MainMenu.ps1..."
-        Write-Host ""
+    if (-not (Test-Path $mainMenu)) {
+        throw "MainMenu.ps1 nao foi encontrado apos o download."
+    }
 
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File "`"$mainMenu`""
-    }
-    else {
-        Write-Host "Erro: MainMenu.ps1 nao foi encontrado."
-    }
+    Write-Host ""
+    Write-Host "Download concluido com sucesso!"
+    Write-Host "Abrindo menu principal..."
+    Write-Host ""
+
+    Set-Location $installDir
+    & $mainMenu
 }
 catch {
     Write-Host ""
-    Write-Host "Erro ao baixar ou executar Lynext:"
-    Write-Host $_.Exception.Message
+    Write-Host "Erro ao baixar ou executar o Lynext:" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Yellow
+    Write-Host ""
+    Pause
 }
-
-Write-Host ""
-Pause
