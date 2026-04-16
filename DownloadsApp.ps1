@@ -8,6 +8,7 @@ Add-Type -AssemblyName System.Drawing
 # =========================
 $destinoBase = Join-Path $env:USERPROFILE "Downloads\Instaladores"
 $downloadsAtivos = @{}
+$iconsPath = Join-Path $PSScriptRoot "icons"
 
 $appsAutomaticos = @(
     "Chrome",
@@ -101,6 +102,37 @@ function Criar-Botao {
     $btn.FlatAppearance.MouseOverBackColor = $bgButton2
     $btn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(70,70,70)
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+    return $btn
+}
+
+function Criar-BotaoComIcone {
+    param(
+        [string]$Texto,
+        [string]$IconePath,
+        [int]$X,
+        [int]$Y,
+        [int]$Largura = 140,
+        [int]$Altura = 36
+    )
+
+    $btn = Criar-Botao -Texto $Texto -X $X -Y $Y -Largura $Largura -Altura $Altura
+
+    if (Test-Path $IconePath) {
+        try {
+            $imgOriginal = [System.Drawing.Image]::FromFile($IconePath)
+            $imgRedimensionada = New-Object System.Drawing.Bitmap($imgOriginal, 18, 18)
+
+            $btn.Image = $imgRedimensionada
+            $btn.ImageAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+            $btn.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+            $btn.TextImageRelation = [System.Windows.Forms.TextImageRelation]::ImageBeforeText
+            $btn.Padding = New-Object System.Windows.Forms.Padding(6, 0, 6, 0)
+
+            $imgOriginal.Dispose()
+        }
+        catch {}
+    }
+
     return $btn
 }
 
@@ -341,7 +373,7 @@ $panelAuto.Controls.Add($chromeNome)
 $chromeStatus = Criar-Label "Aguardando" 350 78 10 $false $fgSoft
 $panelAuto.Controls.Add($chromeStatus)
 
-$btnChrome = Criar-Botao "Baixar" 555 72 110 32
+$btnChrome = Criar-BotaoComIcone "Baixar" (Join-Path $iconsPath "chrome.png") 525 72 140 36
 $panelAuto.Controls.Add($btnChrome)
 
 $anydeskNome = Criar-Label "AnyDesk" 18 108 10 $false
@@ -350,7 +382,7 @@ $panelAuto.Controls.Add($anydeskNome)
 $anydeskStatus = Criar-Label "Aguardando" 350 108 10 $false $fgSoft
 $panelAuto.Controls.Add($anydeskStatus)
 
-$btnAnyDesk = Criar-Botao "Baixar" 555 102 110 32
+$btnAnyDesk = Criar-BotaoComIcone "Baixar" (Join-Path $iconsPath "anydesk.png") 525 102 140 36
 $panelAuto.Controls.Add($btnAnyDesk)
 
 $nvidiaNome = Criar-Label "NVIDIA Profile Inspector" 18 138 10 $false
@@ -359,7 +391,7 @@ $panelAuto.Controls.Add($nvidiaNome)
 $nvidiaStatus = Criar-Label "Aguardando" 350 138 10 $false $fgSoft
 $panelAuto.Controls.Add($nvidiaStatus)
 
-$btnNvidia = Criar-Botao "Baixar" 555 132 110 32
+$btnNvidia = Criar-BotaoComIcone "Baixar" (Join-Path $iconsPath "nvidia.png") 525 132 140 36
 $panelAuto.Controls.Add($btnNvidia)
 
 $msiUtilNome = Criar-Label "MSI Utility v3" 18 168 10 $false
@@ -368,7 +400,7 @@ $panelAuto.Controls.Add($msiUtilNome)
 $msiUtilStatus = Criar-Label "Aguardando" 350 168 10 $false $fgSoft
 $panelAuto.Controls.Add($msiUtilStatus)
 
-$btnMsiUtil = Criar-Botao "Baixar" 555 162 110 32
+$btnMsiUtil = Criar-BotaoComIcone "Baixar" (Join-Path $iconsPath "msiutil.png") 525 162 140 36
 $panelAuto.Controls.Add($btnMsiUtil)
 
 $hidusbfNome = Criar-Label "hidusbf" 18 198 10 $false
@@ -377,7 +409,7 @@ $panelAuto.Controls.Add($hidusbfNome)
 $hidusbfStatus = Criar-Label "Aguardando" 350 198 10 $false $fgSoft
 $panelAuto.Controls.Add($hidusbfStatus)
 
-$btnHidusbf = Criar-Botao "Baixar" 555 192 110 32
+$btnHidusbf = Criar-BotaoComIcone "Baixar" (Join-Path $iconsPath "hidusbf.png") 525 192 140 36
 $panelAuto.Controls.Add($btnHidusbf)
 
 $latencyNome = Criar-Label "LatencyMon" 18 228 10 $false
@@ -386,7 +418,7 @@ $panelAuto.Controls.Add($latencyNome)
 $latencyStatus = Criar-Label "Aguardando" 350 228 10 $false $fgSoft
 $panelAuto.Controls.Add($latencyStatus)
 
-$btnLatency = Criar-Botao "Baixar" 555 222 110 32
+$btnLatency = Criar-BotaoComIcone "Baixar" (Join-Path $iconsPath "latencymon.png") 525 222 140 36
 $panelAuto.Controls.Add($btnLatency)
 
 $islcNome = Criar-Label "ISLC" 18 258 10 $false
@@ -395,7 +427,7 @@ $panelAuto.Controls.Add($islcNome)
 $islcStatus = Criar-Label "Aguardando" 350 258 10 $false $fgSoft
 $panelAuto.Controls.Add($islcStatus)
 
-$btnISLC = Criar-Botao "Baixar" 555 252 110 32
+$btnISLC = Criar-BotaoComIcone "Baixar" (Join-Path $iconsPath "islc.png") 525 252 140 36
 $panelAuto.Controls.Add($btnISLC)
 
 # =========================
@@ -416,7 +448,7 @@ $panelManual.Controls.Add($afterburnerNome)
 $afterburnerStatus = Criar-Label "Aguardando" 350 78 10 $false $fgSoft
 $panelManual.Controls.Add($afterburnerStatus)
 
-$btnAfterburner = Criar-Botao "Abrir pagina" 525 72 140 32
+$btnAfterburner = Criar-BotaoComIcone "Abrir pagina" (Join-Path $iconsPath "afterburner.png") 495 72 170 36
 $panelManual.Controls.Add($btnAfterburner)
 
 $powerNome = Criar-Label "Power Settings Explorer" 18 108 10 $false
@@ -425,7 +457,7 @@ $panelManual.Controls.Add($powerNome)
 $powerStatus = Criar-Label "Aguardando" 350 108 10 $false $fgSoft
 $panelManual.Controls.Add($powerStatus)
 
-$btnPower = Criar-Botao "Abrir pagina" 525 102 140 32
+$btnPower = Criar-BotaoComIcone "Abrir pagina" (Join-Path $iconsPath "powersettings.png") 495 102 170 36
 $panelManual.Controls.Add($btnPower)
 
 $javaNome = Criar-Label "Java" 18 138 10 $false
@@ -434,7 +466,7 @@ $panelManual.Controls.Add($javaNome)
 $javaStatus = Criar-Label "Aguardando" 350 138 10 $false $fgSoft
 $panelManual.Controls.Add($javaStatus)
 
-$btnJava = Criar-Botao "Abrir pagina" 525 132 140 32
+$btnJava = Criar-BotaoComIcone "Abrir pagina" (Join-Path $iconsPath "java.png") 495 132 170 36
 $panelManual.Controls.Add($btnJava)
 
 $adobeNome = Criar-Label "Adobe Reader" 18 168 10 $false
@@ -443,7 +475,7 @@ $panelManual.Controls.Add($adobeNome)
 $adobeStatus = Criar-Label "Aguardando" 350 168 10 $false $fgSoft
 $panelManual.Controls.Add($adobeStatus)
 
-$btnAdobe = Criar-Botao "Abrir pagina" 525 162 140 32
+$btnAdobe = Criar-BotaoComIcone "Abrir pagina" (Join-Path $iconsPath "adobe.png") 495 162 170 36
 $panelManual.Controls.Add($btnAdobe)
 
 # =========================
