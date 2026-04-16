@@ -127,6 +127,51 @@ function Set-Status {
     }
 }
 
+function Get-LatestGitHubStableAsset {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoApiUrl,
+        [string]$ExtensaoDesejada = ".zip"
+    )
+
+    try {
+        $headers = @{
+            "User-Agent" = "Lynext-Downloader"
+            "Accept"     = "application/vnd.github+json"
+        }
+
+        $releases = Invoke-RestMethod -Uri $RepoApiUrl -Headers $headers -UseBasicParsing
+
+        if (-not $releases) {
+            return $null
+        }
+
+        $releaseEstavel = $releases | Where-Object {
+            $_.prerelease -eq $false -and $_.draft -eq $false
+        } | Select-Object -First 1
+
+        if (-not $releaseEstavel) {
+            return $null
+        }
+
+        $asset = $releaseEstavel.assets | Where-Object {
+            $_.name -like "*$ExtensaoDesejada"
+        } | Select-Object -First 1
+
+        if (-not $asset) {
+            return $null
+        }
+
+        return [PSCustomObject]@{
+            Url         = $asset.browser_download_url
+            NomeArquivo = $asset.name
+            Versao      = $releaseEstavel.tag_name
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
 function Iniciar-DownloadExterno {
     param(
         [string]$Nome,
@@ -184,7 +229,7 @@ catch {
 # =========================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Lynext - Downloads"
-$form.Size = New-Object System.Drawing.Size(700, 470)
+$form.Size = New-Object System.Drawing.Size(700, 520)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
@@ -202,7 +247,7 @@ $form.Controls.Add($subtitulo)
 # =========================
 # PAINEL AUTOMATICO
 # =========================
-$panelAuto = Criar-Painel 28 90 630 140
+$panelAuto = Criar-Painel 28 90 630 170
 $form.Controls.Add($panelAuto)
 
 $autoTitulo = Criar-Label "AUTOMATICO" 18 14 11 $true
@@ -229,10 +274,19 @@ $panelAuto.Controls.Add($anydeskStatus)
 $btnAnyDesk = Criar-Botao "Baixar" 485 102 110 32
 $panelAuto.Controls.Add($btnAnyDesk)
 
+$nvidiaNome = Criar-Label "NVIDIA Profile Inspector" 18 138 10 $false
+$panelAuto.Controls.Add($nvidiaNome)
+
+$nvidiaStatus = Criar-Label "Aguardando" 280 138 10 $false $fgSoft
+$panelAuto.Controls.Add($nvidiaStatus)
+
+$btnNvidia = Criar-Botao "Baixar" 485 132 110 32
+$panelAuto.Controls.Add($btnNvidia)
+
 # =========================
 # PAINEL MANUAL
 # =========================
-$panelManual = Criar-Painel 28 245 630 140
+$panelManual = Criar-Painel 28 275 630 140
 $form.Controls.Add($panelManual)
 
 $manualTitulo = Criar-Label "MANUAL" 18 14 11 $true
@@ -263,7 +317,7 @@ $panelManual.Controls.Add($btnAdobe)
 # RODAPE
 # =========================
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = New-Object System.Drawing.Point(28, 395)
+$progress.Location = New-Object System.Drawing.Point(28, 430)
 $progress.Size = New-Object System.Drawing.Size(420, 18)
 $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $progress.Minimum = 0
@@ -271,13 +325,13 @@ $progress.Maximum = 100
 $progress.Value = 0
 $form.Controls.Add($progress)
 
-$geral = Criar-Label "Pronto para iniciar." 28 418 9 $false $fgSoft
+$geral = Criar-Label "Pronto para iniciar." 28 453 9 $false $fgSoft
 $form.Controls.Add($geral)
 
-$btnTudo = Criar-Botao "Baixar automaticos" 468 390 130 32
+$btnTudo = Criar-Botao "Baixar automaticos" 468 425 130 32
 $form.Controls.Add($btnTudo)
 
-$btnFechar = Criar-Botao "Fechar" 608 390 50 32
+$btnFechar = Criar-Botao "Fechar" 608 425 50 32
 $form.Controls.Add($btnFechar)
 
 # =========================
@@ -290,7 +344,7 @@ $timer.Add_Tick({
     $ativos = 0
     $concluidos = 0
 
-    foreach ($nome in @("Chrome","AnyDesk")) {
+    foreach ($nome in @("Chrome", "AnyDesk", "NVIDIA Profile Inspector")) {
         if ($downloadsAtivos.ContainsKey($nome)) {
             $info = $downloadsAtivos[$nome]
 
@@ -331,7 +385,7 @@ $timer.Add_Tick({
         }
     }
 
-    $total = 2
+    $total = 3
     if ($ativos -gt 0) {
         $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
     }
@@ -366,6 +420,29 @@ $btnAnyDesk.Add_Click({
         -Barra $progress
 })
 
+$btnNvidia.Add_Click({
+    Set-Status $nvidiaStatus "Buscando ultima versao..." "andando"
+    $geral.Text = "Consultando GitHub do NVIDIA Profile Inspector..."
+
+    $assetInfo = Get-LatestGitHubStableAsset `
+        -RepoApiUrl "https://api.github.com/repos/Orbmu2k/nvidiaProfileInspector/releases" `
+        -ExtensaoDesejada ".zip"
+
+    if ($null -eq $assetInfo) {
+        Set-Status $nvidiaStatus "Erro ao obter versao [X]" "erro"
+        $geral.Text = "Falha ao localizar release estavel do NVIDIA Profile Inspector."
+        return
+    }
+
+    Iniciar-DownloadExterno `
+        -Nome "NVIDIA Profile Inspector" `
+        -Url $assetInfo.Url `
+        -Arquivo "NVIDIAProfileInspector.zip" `
+        -StatusLabel $nvidiaStatus `
+        -GeralLabel $geral `
+        -Barra $progress
+})
+
 $btnJava.Add_Click({
     try {
         Start-Process "https://www.java.com/pt-br/download/"
@@ -394,6 +471,8 @@ $btnTudo.Add_Click({
     $btnChrome.PerformClick()
     Start-Sleep -Milliseconds 250
     $btnAnyDesk.PerformClick()
+    Start-Sleep -Milliseconds 250
+    $btnNvidia.PerformClick()
 })
 
 $btnFechar.Add_Click({
