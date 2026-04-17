@@ -3,11 +3,6 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 # =========================================================
-# LYNEXT - PERFORMANCE APP V3
-# Layout reformulado com foco visual parecido com o Downloads
-# =========================================================
-
-# =========================================================
 # ADMIN
 # =========================================================
 $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
@@ -30,34 +25,27 @@ $script:LogFile = Join-Path $script:LogDir ("PerformanceApp_{0}.log" -f (Get-Dat
 
 $script:Task = $null
 $script:IsBusy = $false
-$script:CurrentSection = "overview"
-$script:SectionPanels = @{}
 
 # =========================================================
-# TEMA - VERDE ESCURO SUAVE
+# TEMA
 # =========================================================
-$bgMain        = [System.Drawing.Color]::FromArgb(7,10,9)
-$bgHeader      = [System.Drawing.Color]::FromArgb(9,14,12)
-$bgSidebar     = [System.Drawing.Color]::FromArgb(12,18,15)
-$bgCard        = [System.Drawing.Color]::FromArgb(19,26,23)
-$bgCard2       = [System.Drawing.Color]::FromArgb(15,21,18)
-$bgEditor      = [System.Drawing.Color]::FromArgb(10,14,12)
-$bgButton      = [System.Drawing.Color]::FromArgb(28,41,34)
-$bgButtonHover = [System.Drawing.Color]::FromArgb(34,54,43)
-$bgButtonDown  = [System.Drawing.Color]::FromArgb(42,67,52)
-$txtMain       = [System.Drawing.Color]::FromArgb(236,241,237)
-$txtSoft       = [System.Drawing.Color]::FromArgb(156,173,163)
-$txtMuted      = [System.Drawing.Color]::FromArgb(120,136,128)
-$accent        = [System.Drawing.Color]::FromArgb(102,182,128)
-$accent2       = [System.Drawing.Color]::FromArgb(130,215,156)
-$borderColor   = [System.Drawing.Color]::FromArgb(64,88,73)
-$okColor       = [System.Drawing.Color]::FromArgb(113,224,146)
-$warnColor     = [System.Drawing.Color]::FromArgb(245,205,102)
-$errColor      = [System.Drawing.Color]::FromArgb(255,120,120)
-$sidebarActive = [System.Drawing.Color]::FromArgb(28,44,36)
+$bgMain      = [System.Drawing.Color]::FromArgb(8,12,10)
+$bgPanel     = [System.Drawing.Color]::FromArgb(14,22,18)
+$bgPanel2    = [System.Drawing.Color]::FromArgb(19,30,24)
+$bgButton    = [System.Drawing.Color]::FromArgb(12,26,18)
+$bgHover     = [System.Drawing.Color]::FromArgb(20,42,30)
+$bgDown      = [System.Drawing.Color]::FromArgb(28,58,40)
+$txtMain     = [System.Drawing.Color]::FromArgb(232,240,234)
+$txtSoft     = [System.Drawing.Color]::FromArgb(145,170,150)
+$accent      = [System.Drawing.Color]::FromArgb(66,170,110)
+$accent2     = [System.Drawing.Color]::FromArgb(95,220,140)
+$okColor     = [System.Drawing.Color]::FromArgb(90,220,140)
+$warnColor   = [System.Drawing.Color]::FromArgb(255,200,90)
+$errColor    = [System.Drawing.Color]::FromArgb(255,110,110)
+$borderColor = [System.Drawing.Color]::FromArgb(46,92,66)
 
 # =========================================================
-# HELPERS GERAIS
+# HELPERS
 # =========================================================
 function Write-LogLine {
     param([string]$Text)
@@ -117,6 +105,19 @@ function Escape-SQ {
     return ($Text -replace "'", "''")
 }
 
+function Save-Json {
+    param([string]$Path,[object]$Data)
+    $Data | ConvertTo-Json -Depth 12 | Set-Content -Path $Path -Encoding UTF8
+}
+
+function Load-Json {
+    param([string]$Path)
+    if (Test-Path $Path) {
+        try { return Get-Content $Path -Raw | ConvertFrom-Json } catch { return $null }
+    }
+    return $null
+}
+
 function Get-RegValue {
     param([string]$Path,[string]$Name)
     try { return (Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop).$Name } catch { return $null }
@@ -172,10 +173,8 @@ function Get-NvidiaSmiPath {
 
 function Ensure-BackupExists {
     if (-not (Test-Path $script:BackupFile)) {
-        Start-LynextTask -Name "Criar Backup Inicial" -Code (Get-BackupCode)
-        return $false
+        Backup-CurrentState
     }
-    return $true
 }
 
 function Show-InputDialog {
@@ -187,7 +186,7 @@ function Show-InputDialog {
 
     $f = New-Object System.Windows.Forms.Form
     $f.Text = $Title
-    $f.Size = New-Object System.Drawing.Size(430,165)
+    $f.Size = New-Object System.Drawing.Size(430,160)
     $f.StartPosition = "CenterParent"
     $f.FormBorderStyle = "FixedDialog"
     $f.MaximizeBox = $false
@@ -206,15 +205,15 @@ function Show-InputDialog {
     $tb.Location = New-Object System.Drawing.Point(15,45)
     $tb.Size = New-Object System.Drawing.Size(385,25)
     $tb.Text = $DefaultValue
-    $tb.BackColor = $bgCard
+    $tb.BackColor = $bgPanel2
     $tb.ForeColor = $txtMain
     $tb.BorderStyle = "FixedSingle"
     $tb.Font = New-Object System.Drawing.Font("Segoe UI",9)
 
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = "OK"
-    $ok.Location = New-Object System.Drawing.Point(230,84)
-    $ok.Size = New-Object System.Drawing.Size(80,32)
+    $ok.Location = New-Object System.Drawing.Point(230,80)
+    $ok.Size = New-Object System.Drawing.Size(80,30)
     $ok.FlatStyle = "Flat"
     $ok.BackColor = $bgButton
     $ok.ForeColor = $txtMain
@@ -227,8 +226,8 @@ function Show-InputDialog {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = "Cancelar"
-    $cancel.Location = New-Object System.Drawing.Point(320,84)
-    $cancel.Size = New-Object System.Drawing.Size(80,32)
+    $cancel.Location = New-Object System.Drawing.Point(320,80)
+    $cancel.Size = New-Object System.Drawing.Size(80,30)
     $cancel.FlatStyle = "Flat"
     $cancel.BackColor = $bgButton
     $cancel.ForeColor = $txtMain
@@ -255,8 +254,8 @@ function New-LynextButton {
         [string]$Text,
         [int]$X,
         [int]$Y,
-        [int]$W = 180,
-        [int]$H = 40
+        [int]$W = 170,
+        [int]$H = 42
     )
 
     $btn = New-Object System.Windows.Forms.Button
@@ -268,120 +267,14 @@ function New-LynextButton {
     $btn.FlatStyle = "Flat"
     $btn.FlatAppearance.BorderColor = $borderColor
     $btn.FlatAppearance.BorderSize = 1
-    $btn.FlatAppearance.MouseOverBackColor = $bgButtonHover
-    $btn.FlatAppearance.MouseDownBackColor = $bgButtonDown
+    $btn.FlatAppearance.MouseOverBackColor = $bgHover
+    $btn.FlatAppearance.MouseDownBackColor = $bgDown
     $btn.Font = New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btn.UseVisualStyleBackColor = $false
     return $btn
 }
 
-function New-SidebarButton {
-    param(
-        [string]$Key,
-        [string]$Text,
-        [int]$Y
-    )
-
-    $btn = New-Object System.Windows.Forms.Button
-    $btn.Text = $Text
-    $btn.Tag = $Key
-    $btn.Location = New-Object System.Drawing.Point(14,$Y)
-    $btn.Size = New-Object System.Drawing.Size(206,42)
-    $btn.BackColor = $bgSidebar
-    $btn.ForeColor = $txtMain
-    $btn.FlatStyle = 'Flat'
-    $btn.FlatAppearance.BorderColor = $borderColor
-    $btn.FlatAppearance.BorderSize = 1
-    $btn.FlatAppearance.MouseOverBackColor = $bgButtonHover
-    $btn.FlatAppearance.MouseDownBackColor = $bgButtonDown
-    $btn.Font = New-Object System.Drawing.Font('Segoe UI',9,[System.Drawing.FontStyle]::Bold)
-    $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btn.UseVisualStyleBackColor = $false
-    return $btn
-}
-
-function New-CardPanel {
-    param(
-        [int]$X,
-        [int]$Y,
-        [int]$W,
-        [int]$H
-    )
-
-    $p = New-Object System.Windows.Forms.Panel
-    $p.Location = New-Object System.Drawing.Point($X,$Y)
-    $p.Size = New-Object System.Drawing.Size($W,$H)
-    $p.BackColor = $bgCard
-    $p.BorderStyle = 'FixedSingle'
-    return $p
-}
-
-function Add-SectionLabel {
-    param($parent,[string]$text,[int]$x,[int]$y,[int]$size=11)
-    $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = $text
-    $lbl.Location = New-Object System.Drawing.Point($x,$y)
-    $lbl.AutoSize = $true
-    $lbl.Font = New-Object System.Drawing.Font("Segoe UI",$size,[System.Drawing.FontStyle]::Bold)
-    $lbl.ForeColor = $txtMain
-    $parent.Controls.Add($lbl)
-    return $lbl
-}
-
-function Add-SoftLabel {
-    param($parent,[string]$text,[int]$x,[int]$y,[int]$w=500,[int]$h=34)
-    $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = $text
-    $lbl.Location = New-Object System.Drawing.Point($x,$y)
-    $lbl.Size = New-Object System.Drawing.Size($w,$h)
-    $lbl.Font = New-Object System.Drawing.Font("Segoe UI",9)
-    $lbl.ForeColor = $txtSoft
-    $parent.Controls.Add($lbl)
-    return $lbl
-}
-
-function New-InfoValueLabel {
-    param($parent,[string]$value,[int]$x,[int]$y,[int]$w=220)
-    $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = $value
-    $lbl.Location = New-Object System.Drawing.Point($x,$y)
-    $lbl.Size = New-Object System.Drawing.Size($w,24)
-    $lbl.Font = New-Object System.Drawing.Font('Segoe UI',10,[System.Drawing.FontStyle]::Bold)
-    $lbl.ForeColor = $accent2
-    $parent.Controls.Add($lbl)
-    return $lbl
-}
-
-function Set-SidebarActive {
-    param([string]$Key)
-
-    foreach ($btn in $script:sidebarButtons) {
-        if ($btn.Tag -eq $Key) {
-            $btn.BackColor = $sidebarActive
-            $btn.ForeColor = $accent2
-        }
-        else {
-            $btn.BackColor = $bgSidebar
-            $btn.ForeColor = $txtMain
-        }
-    }
-}
-
-function Show-Section {
-    param([string]$Key)
-
-    foreach ($name in $script:SectionPanels.Keys) {
-        $script:SectionPanels[$name].Visible = ($name -eq $Key)
-    }
-
-    $script:CurrentSection = $Key
-    Set-SidebarActive $Key
-}
-
-# =========================================================
-# EXECUCAO DE TAREFAS
-# =========================================================
 function Start-LynextTask {
     param(
         [string]$Name,
@@ -523,7 +416,7 @@ function Poll-LynextTask {
 }
 
 # =========================================================
-# CODES / ACTIONS
+# SCRIPTS / ACTIONS
 # =========================================================
 function Get-BackupCode {
 @"
@@ -607,7 +500,6 @@ if (`$nvidiaSmi) {
     catch {}
 }
 `$data | ConvertTo-Json -Depth 12 | Set-Content -Path '$($script:BackupFile)' -Encoding UTF8
-'Backup salvo com sucesso.'
 "@
 }
 
@@ -988,419 +880,281 @@ foreach (`$gpu in `$gpus) {
 }
 
 # =========================================================
-# FORM BASE
+# FORM
 # =========================================================
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'Lynext - Performance App'
-$form.Size = New-Object System.Drawing.Size(1280,820)
-$form.StartPosition = 'CenterScreen'
+$form.Text = "Lynext - Performance App"
+$form.Size = New-Object System.Drawing.Size(1240,780)
+$form.StartPosition = "CenterScreen"
 $form.BackColor = $bgMain
 $form.ForeColor = $txtMain
-$form.FormBorderStyle = 'FixedSingle'
+$form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
 
-# =========================================================
-# HEADER
-# =========================================================
-$header = New-Object System.Windows.Forms.Panel
-$header.Location = New-Object System.Drawing.Point(0,0)
-$header.Size = New-Object System.Drawing.Size(1280,96)
-$header.BackColor = $bgHeader
-
 $lblTitle = New-Object System.Windows.Forms.Label
-$lblTitle.Text = 'Central de Performance'
-$lblTitle.Font = New-Object System.Drawing.Font('Segoe UI',22,[System.Drawing.FontStyle]::Bold)
-$lblTitle.ForeColor = $txtMain
+$lblTitle.Text = "Lynext"
+$lblTitle.Font = New-Object System.Drawing.Font("Segoe UI",24,[System.Drawing.FontStyle]::Bold)
+$lblTitle.ForeColor = $accent2
 $lblTitle.AutoSize = $true
-$lblTitle.Location = New-Object System.Drawing.Point(455,18)
+$lblTitle.Location = New-Object System.Drawing.Point(24,18)
 
 $lblSub = New-Object System.Windows.Forms.Label
-$lblSub.Text = 'Energia, Windows, GPU e perfis organizados'
-$lblSub.Font = New-Object System.Drawing.Font('Segoe UI',10)
+$lblSub.Text = "Performance Center | energia, windows e gpu"
+$lblSub.Font = New-Object System.Drawing.Font("Segoe UI",10)
 $lblSub.ForeColor = $txtSoft
 $lblSub.AutoSize = $true
-$lblSub.Location = New-Object System.Drawing.Point(486,56)
+$lblSub.Location = New-Object System.Drawing.Point(28,62)
 
-$headerLine = New-Object System.Windows.Forms.Panel
-$headerLine.Location = New-Object System.Drawing.Point(0,95)
-$headerLine.Size = New-Object System.Drawing.Size(1280,1)
-$headerLine.BackColor = $borderColor
+$lblCredit = New-Object System.Windows.Forms.Label
+$lblCredit.Text = "Created by Ryan"
+$lblCredit.Font = New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Italic)
+$lblCredit.ForeColor = $txtSoft
+$lblCredit.AutoSize = $true
+$lblCredit.Location = New-Object System.Drawing.Point(1030,24)
 
-$header.Controls.AddRange(@($lblTitle,$lblSub,$headerLine))
+# Left container
+$panelLeft = New-Object System.Windows.Forms.Panel
+$panelLeft.Location = New-Object System.Drawing.Point(24,100)
+$panelLeft.Size = New-Object System.Drawing.Size(600,610)
+$panelLeft.BackColor = $bgPanel
 
-# =========================================================
-# SIDEBAR
-# =========================================================
-$sidebar = New-Object System.Windows.Forms.Panel
-$sidebar.Location = New-Object System.Drawing.Point(18,114)
-$sidebar.Size = New-Object System.Drawing.Size(236,642)
-$sidebar.BackColor = $bgSidebar
-$sidebar.BorderStyle = 'FixedSingle'
-
-$navTitle = New-Object System.Windows.Forms.Label
-$navTitle.Text = 'Categorias'
-$navTitle.Location = New-Object System.Drawing.Point(14,14)
-$navTitle.AutoSize = $true
-$navTitle.Font = New-Object System.Drawing.Font('Segoe UI',11,[System.Drawing.FontStyle]::Bold)
-$navTitle.ForeColor = $txtMain
-
-$navSub = New-Object System.Windows.Forms.Label
-$navSub.Text = 'Deixei separado igual voce queria, pra nao misturar tudo.'
-$navSub.Location = New-Object System.Drawing.Point(14,38)
-$navSub.Size = New-Object System.Drawing.Size(195,38)
-$navSub.Font = New-Object System.Drawing.Font('Segoe UI',8)
-$navSub.ForeColor = $txtSoft
-
-$btnNavOverview = New-SidebarButton 'overview' 'Visao Geral' 90
-$btnNavModes    = New-SidebarButton 'modes' 'Modos Prontos' 138
-$btnNavCpu      = New-SidebarButton 'cpu' 'CPU / Energia' 186
-$btnNavWindows  = New-SidebarButton 'windows' 'Windows / Jogos' 234
-$btnNavNvidia   = New-SidebarButton 'nvidia' 'NVIDIA' 282
-$btnNavOther    = New-SidebarButton 'other' 'AMD / Intel' 330
-$btnNavBackup   = New-SidebarButton 'backup' 'Backup / Reset' 378
-
-$sidebar.Controls.AddRange(@(
-    $navTitle,$navSub,
-    $btnNavOverview,$btnNavModes,$btnNavCpu,$btnNavWindows,$btnNavNvidia,$btnNavOther,$btnNavBackup
-))
-
-$script:sidebarButtons = @($btnNavOverview,$btnNavModes,$btnNavCpu,$btnNavWindows,$btnNavNvidia,$btnNavOther,$btnNavBackup)
-
-# =========================================================
-# CONTENT AREA
-# =========================================================
-$content = New-Object System.Windows.Forms.Panel
-$content.Location = New-Object System.Drawing.Point(268,114)
-$content.Size = New-Object System.Drawing.Size(610,642)
-$content.BackColor = $bgMain
-
-function New-SectionPanel {
-    $p = New-Object System.Windows.Forms.Panel
-    $p.Location = New-Object System.Drawing.Point(0,0)
-    $p.Size = New-Object System.Drawing.Size(610,642)
-    $p.BackColor = $bgMain
-    $p.Visible = $false
-    return $p
-}
-
-# =========================================================
-# OVERVIEW
-# =========================================================
-$panelOverview = New-SectionPanel
-
-$ovCardTop = New-CardPanel 0 0 610 190
-Add-SectionLabel $ovCardTop 'Resumo rapido' 18 14 13
-Add-SoftLabel $ovCardTop 'Tela inicial mais limpa, inspirada no teu app de downloads e sem aquela cara de menu cru.' 18 42 560 34
-
-Add-SoftLabel $ovCardTop 'GPU detectada' 18 86 140 20 | Out-Null
-$lblDetectedGpu = New-InfoValueLabel $ovCardTop (Get-GpuVendor) 18 108 140
-Add-SoftLabel $ovCardTop 'Notebook' 180 86 120 20 | Out-Null
-$lblIsLaptop = New-InfoValueLabel $ovCardTop ((Get-IsLaptop).ToString()) 180 108 120
-Add-SoftLabel $ovCardTop 'Modern Standby' 320 86 130 20 | Out-Null
-$lblModern = New-InfoValueLabel $ovCardTop ((Test-ModernStandby).ToString()) 320 108 130
-Add-SoftLabel $ovCardTop 'Plano atual' 460 86 120 20 | Out-Null
-$lblPlan = New-InfoValueLabel $ovCardTop (Get-ActivePowerSchemeGuid) 460 108 130
-$lblPlan.Font = New-Object System.Drawing.Font('Segoe UI',8,[System.Drawing.FontStyle]::Bold)
-
-$ovCardQuick = New-CardPanel 0 206 610 204
-Add-SectionLabel $ovCardQuick 'Acoes rapidas' 18 14 13
-Add-SoftLabel $ovCardQuick 'Aqui fica o que voce mais usa sem entrar nas categorias.' 18 42 520 24
-
-$btnQuickUltra = New-LynextButton 'Ultra Performance' 18 82 180 42
-$btnQuickLite  = New-LynextButton 'Modo Lite' 208 82 180 42
-$btnQuickInfo  = New-LynextButton 'Resumo do Sistema' 398 82 180 42
-$btnQuickReset = New-LynextButton 'Reset Geral' 18 132 180 42
-$btnQuickBackup = New-LynextButton 'Criar Backup' 208 132 180 42
-$btnQuickLogs = New-LynextButton 'Abrir Logs' 398 132 180 42
-$ovCardQuick.Controls.AddRange(@($btnQuickUltra,$btnQuickLite,$btnQuickInfo,$btnQuickReset,$btnQuickBackup,$btnQuickLogs))
-
-$ovCardTips = New-CardPanel 0 426 610 180
-Add-SectionLabel $ovCardTips 'Notas' 18 14 13
-Add-SoftLabel $ovCardTips 'Ultra: mais agressivo.' 18 50 240 20 | Out-Null
-Add-SoftLabel $ovCardTips 'Lite: mais equilibrado.' 18 76 240 20 | Out-Null
-Add-SoftLabel $ovCardTips 'Backup: sempre recomendado antes de brincar nos perfis.' 18 102 360 20 | Out-Null
-Add-SoftLabel $ovCardTips 'NVIDIA tem mais automacao por enquanto. AMD e Intel ficaram mais conservadores.' 18 128 520 34 | Out-Null
-
-$panelOverview.Controls.AddRange(@($ovCardTop,$ovCardQuick,$ovCardTips))
-
-# =========================================================
-# MODES
-# =========================================================
-$panelModes = New-SectionPanel
-
-$modesTop = New-CardPanel 0 0 610 210
-Add-SectionLabel $modesTop 'Modos prontos' 18 14 13
-Add-SoftLabel $modesTop 'Esses presets juntam CPU, Windows e GPU numa tacada so.' 18 42 520 24
-
-$btnUltra = New-LynextButton 'LYNEXT ULTRA PERFORMANCE' 18 84 270 48
-$btnLite  = New-LynextButton 'LYNEXT LITE' 304 84 270 48
-$btnReset = New-LynextButton 'RESET GERAL' 18 142 180 40
-$btnInfo  = New-LynextButton 'RESUMO DO SISTEMA' 208 142 180 40
-$btnBackupCreate = New-LynextButton 'CRIAR BACKUP' 398 142 176 40
-$modesTop.Controls.AddRange(@($btnUltra,$btnLite,$btnReset,$btnInfo,$btnBackupCreate))
-
-$modesDesc = New-CardPanel 0 226 610 188
-Add-SectionLabel $modesDesc 'O que cada modo faz' 18 14 13
-Add-SoftLabel $modesDesc 'Ultra:' 18 50 70 20 | Out-Null
-Add-SoftLabel $modesDesc 'prioriza desempenho, usa ajustes mais agressivos de energia e Windows.' 82 50 490 20 | Out-Null
-Add-SoftLabel $modesDesc 'Lite:' 18 80 70 20 | Out-Null
-Add-SoftLabel $modesDesc 'tenta manter desempenho com menos calor, consumo e stress.' 82 80 490 20 | Out-Null
-Add-SoftLabel $modesDesc 'Reset:' 18 110 70 20 | Out-Null
-Add-SoftLabel $modesDesc 'restaura usando o backup salvo na pasta do Lynext.' 82 110 490 20 | Out-Null
-
-$panelModes.Controls.AddRange(@($modesTop,$modesDesc))
-
-# =========================================================
-# CPU
-# =========================================================
-$panelCpu = New-SectionPanel
-
-$cpuCard = New-CardPanel 0 0 610 240
-Add-SectionLabel $cpuCard 'CPU / Energia' 18 14 13
-Add-SoftLabel $cpuCard 'Separado do resto pra nao misturar rede, windows e energia tudo no mesmo lugar.' 18 42 560 24
-
-$btnCpuUltra   = New-LynextButton 'CPU ULTRA' 18 88 180 42
-$btnCpuLite    = New-LynextButton 'CPU LITE' 208 88 180 42
-$btnCpuThermal = New-LynextButton 'TERMICO / QUIETO' 398 88 176 42
-$cpuCard.Controls.AddRange(@($btnCpuUltra,$btnCpuLite,$btnCpuThermal))
-
-Add-SoftLabel $cpuCard 'Ultra: clocks e boost mais agressivos.' 18 150 400 20 | Out-Null
-Add-SoftLabel $cpuCard 'Lite: equilibrio entre resposta e consumo.' 18 176 400 20 | Out-Null
-Add-SoftLabel $cpuCard 'Termico: reduz agressividade pra segurar temperatura e ruido.' 18 202 480 20 | Out-Null
-
-$panelCpu.Controls.Add($cpuCard)
-
-# =========================================================
-# WINDOWS
-# =========================================================
-$panelWindows = New-SectionPanel
-
-$winCard = New-CardPanel 0 0 610 240
-Add-SectionLabel $winCard 'Windows / Jogos' 18 14 13
-Add-SoftLabel $winCard 'Aqui fica HAGS, DVR, Game Mode e os ajustes mais leves de latencia.' 18 42 560 24
-
-$btnWinUltra = New-LynextButton 'WINDOWS ULTRA' 18 88 180 42
-$btnWinLite  = New-LynextButton 'WINDOWS LITE' 208 88 180 42
-$btnWinReset = New-LynextButton 'RESET WINDOWS' 398 88 176 42
-$winCard.Controls.AddRange(@($btnWinUltra,$btnWinLite,$btnWinReset))
-
-Add-SoftLabel $winCard 'Esses ajustes mexem em Game DVR, HAGS e prioridades de multimedia.' 18 150 520 20 | Out-Null
-Add-SoftLabel $winCard 'Reinicio pode ser necessario dependendo do que for alterado.' 18 176 520 20 | Out-Null
-
-$panelWindows.Controls.Add($winCard)
-
-# =========================================================
-# NVIDIA
-# =========================================================
-$panelNvidia = New-SectionPanel
-
-$nvCard = New-CardPanel 0 0 610 300
-Add-SectionLabel $nvCard 'NVIDIA' 18 14 13
-Add-SoftLabel $nvCard 'Essa area ficou propria pra GPU, sem embolar com os outros menus.' 18 42 540 24
-
-$btnNvInfo  = New-LynextButton 'SUPORTE / ESTADO' 18 88 180 42
-$btnNvUltra = New-LynextButton 'NVIDIA ULTRA' 208 88 180 42
-$btnNvLite  = New-LynextButton 'NVIDIA LITE' 398 88 176 42
-$btnNvReset = New-LynextButton 'RESET NVIDIA' 18 142 180 42
-$btnNvPower = New-LynextButton 'POWER LIMIT MANUAL' 208 142 180 42
-$nvCard.Controls.AddRange(@($btnNvInfo,$btnNvUltra,$btnNvLite,$btnNvReset,$btnNvPower))
-
-Add-SoftLabel $nvCard 'Automacao depende do nvidia-smi estar disponivel no driver.' 18 208 520 20 | Out-Null
-Add-SoftLabel $nvCard 'Se nao houver suporte, ele informa e segue de forma conservadora.' 18 234 540 20 | Out-Null
-
-$panelNvidia.Controls.Add($nvCard)
-
-# =========================================================
-# OTHER
-# =========================================================
-$panelOther = New-SectionPanel
-
-$otherCard = New-CardPanel 0 0 610 240
-Add-SectionLabel $otherCard 'AMD / Intel' 18 14 13
-Add-SoftLabel $otherCard 'Deixei essa parte mais informativa por enquanto, sem tuning automatico pesado.' 18 42 560 24
-
-$btnAmdInfo   = New-LynextButton 'AMD INFO' 18 88 180 42
-$btnIntelInfo = New-LynextButton 'INTEL INFO' 208 88 180 42
-$btnPolicy    = New-LynextButton 'GUIA RAPIDO' 398 88 176 42
-$otherCard.Controls.AddRange(@($btnAmdInfo,$btnIntelInfo,$btnPolicy))
-
-Add-SoftLabel $otherCard 'Isso evita quebrar compatibilidade em hardware que varia muito de driver pra driver.' 18 150 550 24 | Out-Null
-
-$panelOther.Controls.Add($otherCard)
-
-# =========================================================
-# BACKUP
-# =========================================================
-$panelBackup = New-SectionPanel
-
-$backupCard = New-CardPanel 0 0 610 240
-Add-SectionLabel $backupCard 'Backup / Reset' 18 14 13
-Add-SoftLabel $backupCard 'A parte de seguranca ficou separada, porque ela merece area propria.' 18 42 540 24
-
-$btnOpenFolder = New-LynextButton 'ABRIR PASTA LYNEXT' 18 88 180 42
-$btnOpenLogs   = New-LynextButton 'ABRIR LOGS' 208 88 180 42
-$btnBackupRefresh = New-LynextButton 'ATUALIZAR BACKUP' 398 88 176 42
-$backupCard.Controls.AddRange(@($btnOpenFolder,$btnOpenLogs,$btnBackupRefresh))
-
-Add-SoftLabel $backupCard 'Backup salvo em ProgramData\Lynext.' 18 150 300 20 | Out-Null
-Add-SoftLabel $backupCard 'Logs separados em pasta propria pra facilitar debug.' 18 176 300 20 | Out-Null
-
-$panelBackup.Controls.Add($backupCard)
-
-$content.Controls.AddRange(@($panelOverview,$panelModes,$panelCpu,$panelWindows,$panelNvidia,$panelOther,$panelBackup))
-$script:SectionPanels['overview'] = $panelOverview
-$script:SectionPanels['modes']    = $panelModes
-$script:SectionPanels['cpu']      = $panelCpu
-$script:SectionPanels['windows']  = $panelWindows
-$script:SectionPanels['nvidia']   = $panelNvidia
-$script:SectionPanels['other']    = $panelOther
-$script:SectionPanels['backup']   = $panelBackup
-
-# =========================================================
-# OUTPUT AREA
-# =========================================================
-$outputWrap = New-Object System.Windows.Forms.Panel
-$outputWrap.Location = New-Object System.Drawing.Point(894,114)
-$outputWrap.Size = New-Object System.Drawing.Size(352,642)
-$outputWrap.BackColor = $bgCard
-$outputWrap.BorderStyle = 'FixedSingle'
+# Output
+$panelOutput = New-Object System.Windows.Forms.Panel
+$panelOutput.Location = New-Object System.Drawing.Point(640,100)
+$panelOutput.Size = New-Object System.Drawing.Size(560,610)
+$panelOutput.BackColor = $bgPanel
 
 $outTitle = New-Object System.Windows.Forms.Label
-$outTitle.Text = 'Painel de Saida'
-$outTitle.Location = New-Object System.Drawing.Point(16,14)
-$outTitle.AutoSize = $true
-$outTitle.Font = New-Object System.Drawing.Font('Segoe UI',12,[System.Drawing.FontStyle]::Bold)
+$outTitle.Text = "SAIDA"
+$outTitle.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold)
 $outTitle.ForeColor = $txtMain
-
-$outSub = New-Object System.Windows.Forms.Label
-$outSub.Text = 'Aqui voce acompanha o que o app executou.'
-$outSub.Location = New-Object System.Drawing.Point(16,40)
-$outSub.Size = New-Object System.Drawing.Size(300,22)
-$outSub.Font = New-Object System.Drawing.Font('Segoe UI',8)
-$outSub.ForeColor = $txtSoft
+$outTitle.AutoSize = $true
+$outTitle.Location = New-Object System.Drawing.Point(14,10)
 
 $script:txtOutput = New-Object System.Windows.Forms.TextBox
-$script:txtOutput.Location = New-Object System.Drawing.Point(16,72)
-$script:txtOutput.Size = New-Object System.Drawing.Size(316,518)
+$script:txtOutput.Location = New-Object System.Drawing.Point(15,40)
+$script:txtOutput.Size = New-Object System.Drawing.Size(530,550)
 $script:txtOutput.Multiline = $true
-$script:txtOutput.ScrollBars = 'Vertical'
+$script:txtOutput.ScrollBars = "Vertical"
 $script:txtOutput.ReadOnly = $true
-$script:txtOutput.BackColor = $bgEditor
+$script:txtOutput.BackColor = $bgPanel2
 $script:txtOutput.ForeColor = $txtMain
-$script:txtOutput.BorderStyle = 'FixedSingle'
-$script:txtOutput.Font = New-Object System.Drawing.Font('Consolas',9)
+$script:txtOutput.BorderStyle = "FixedSingle"
+$script:txtOutput.Font = New-Object System.Drawing.Font("Consolas",9)
 
-$btnClearOutput = New-LynextButton 'Limpar painel' 16 602 150 28
-$btnCopyLogPath = New-LynextButton 'Mostrar log' 182 602 150 28
+$panelOutput.Controls.Add($outTitle)
+$panelOutput.Controls.Add($script:txtOutput)
 
-$outputWrap.Controls.AddRange(@($outTitle,$outSub,$script:txtOutput,$btnClearOutput,$btnCopyLogPath))
+# Tabs
+$tabs = New-Object System.Windows.Forms.TabControl
+$tabs.Location = New-Object System.Drawing.Point(12,14)
+$tabs.Size = New-Object System.Drawing.Size(575,580)
+$tabs.Font = New-Object System.Drawing.Font("Segoe UI",9)
+$tabs.Appearance = 'Normal'
+$tabs.Multiline = $false
 
-# =========================================================
-# FOOTER
-# =========================================================
-$footer = New-Object System.Windows.Forms.Panel
-$footer.Location = New-Object System.Drawing.Point(0,767)
-$footer.Size = New-Object System.Drawing.Size(1280,30)
-$footer.BackColor = $bgHeader
+function New-TabPage {
+    param([string]$Title)
+    $tab = New-Object System.Windows.Forms.TabPage
+    $tab.Text = $Title
+    $tab.BackColor = $bgPanel
+    $tab.ForeColor = $txtMain
+    return $tab
+}
 
-$script:lblStatus = New-Object System.Windows.Forms.Label
-$script:lblStatus.Text = 'Status: Pronto'
-$script:lblStatus.Location = New-Object System.Drawing.Point(18,6)
-$script:lblStatus.AutoSize = $true
-$script:lblStatus.Font = New-Object System.Drawing.Font('Segoe UI',9,[System.Drawing.FontStyle]::Bold)
-$script:lblStatus.ForeColor = $okColor
+$tabModes   = New-TabPage "Modos"
+$tabCPU     = New-TabPage "CPU / Energia"
+$tabWin     = New-TabPage "Windows / Jogos"
+$tabNvidia  = New-TabPage "NVIDIA"
+$tabOther   = New-TabPage "AMD / Intel"
+$tabBackup  = New-TabPage "Backup / Reset"
 
-$script:prg = New-Object System.Windows.Forms.ProgressBar
-$script:prg.Location = New-Object System.Drawing.Point(190,7)
-$script:prg.Size = New-Object System.Drawing.Size(220,12)
-$script:prg.Style = 'Blocks'
+$tabs.TabPages.AddRange(@($tabModes,$tabCPU,$tabWin,$tabNvidia,$tabOther,$tabBackup))
+$panelLeft.Controls.Add($tabs)
 
-$lblLog = New-Object System.Windows.Forms.Label
-$lblLog.Text = "Log: $script:LogFile"
-$lblLog.Location = New-Object System.Drawing.Point(430,6)
-$lblLog.Size = New-Object System.Drawing.Size(820,18)
-$lblLog.Font = New-Object System.Drawing.Font('Segoe UI',8)
-$lblLog.ForeColor = $txtMuted
+function Add-SectionLabel {
+    param($parent,[string]$text,[int]$x,[int]$y,[int]$size=11)
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $text
+    $lbl.Location = New-Object System.Drawing.Point($x,$y)
+    $lbl.AutoSize = $true
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI",$size,[System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = $txtMain
+    $parent.Controls.Add($lbl)
+    return $lbl
+}
 
-$footer.Controls.AddRange(@($script:lblStatus,$script:prg,$lblLog))
+function Add-SoftLabel {
+    param($parent,[string]$text,[int]$x,[int]$y,[int]$w=500,[int]$h=34)
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $text
+    $lbl.Location = New-Object System.Drawing.Point($x,$y)
+    $lbl.Size = New-Object System.Drawing.Size($w,$h)
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI",9)
+    $lbl.ForeColor = $txtSoft
+    $parent.Controls.Add($lbl)
+    return $lbl
+}
 
-# =========================================================
-# TOOLTIPS
-# =========================================================
 $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.AutoPopDelay = 8000
 $toolTip.InitialDelay = 250
 $toolTip.ReshowDelay = 150
 $toolTip.ShowAlways = $true
 
-$toolTip.SetToolTip($btnUltra, 'Aplica CPU Ultra + Windows Ultra + NVIDIA Ultra quando suportado.')
-$toolTip.SetToolTip($btnLite, 'Aplica CPU Lite + Windows Lite + NVIDIA Lite quando suportado.')
-$toolTip.SetToolTip($btnReset, 'Restaura os ajustes pelo backup salvo.')
-$toolTip.SetToolTip($btnInfo, 'Mostra um resumo tecnico do sistema.')
-$toolTip.SetToolTip($btnCpuUltra, 'Modo agressivo de energia e boost.')
-$toolTip.SetToolTip($btnCpuLite, 'Modo equilibrado.')
-$toolTip.SetToolTip($btnCpuThermal, 'Foco em temperatura e ruido.')
-$toolTip.SetToolTip($btnWinUltra, 'Game Mode ON, DVR OFF, HAGS ON.')
-$toolTip.SetToolTip($btnWinLite, 'Ajuste mais leve de Windows/Jogos.')
-$toolTip.SetToolTip($btnWinReset, 'Restaura os principais ajustes de Windows.')
-$toolTip.SetToolTip($btnNvInfo, 'Mostra estado da GPU via nvidia-smi.')
-$toolTip.SetToolTip($btnNvUltra, 'Modo NVIDIA mais agressivo.')
-$toolTip.SetToolTip($btnNvLite, 'Restaura limite salvo e aplica politica mais leve.')
-$toolTip.SetToolTip($btnNvReset, 'Reseta clocks e power limit salvo.')
-$toolTip.SetToolTip($btnNvPower, 'Permite definir o power limit manualmente.')
+# =========================================================
+# TAB MODOS
+# =========================================================
+Add-SectionLabel $tabModes "MODOS PRINCIPAIS" 18 16
+Add-SoftLabel $tabModes "Use os presets prontos. Ultra e agressivo. Lite busca equilibrio." 18 42 520 32
+
+$btnUltra = New-LynextButton "LYNEXT ULTRA PERFORMANCE" 18 90 250 50
+$btnLite  = New-LynextButton "LYNEXT LITE" 285 90 250 50
+$btnReset = New-LynextButton "RESET GERAL" 18 155 250 46
+$btnInfo  = New-LynextButton "RESUMO DO SISTEMA" 285 155 250 46
+$tabModes.Controls.AddRange(@($btnUltra,$btnLite,$btnReset,$btnInfo))
+
+Add-SectionLabel $tabModes "DESCRICAO" 18 235
+Add-SoftLabel $tabModes "Ultra: foco em desempenho maximo. Lite: desempenho com mais controle de consumo e temperatura." 18 262 520 52
 
 # =========================================================
-# NAV EVENTS
+# TAB CPU
 # =========================================================
-$btnNavOverview.Add_Click({ Show-Section 'overview' })
-$btnNavModes.Add_Click({ Show-Section 'modes' })
-$btnNavCpu.Add_Click({ Show-Section 'cpu' })
-$btnNavWindows.Add_Click({ Show-Section 'windows' })
-$btnNavNvidia.Add_Click({ Show-Section 'nvidia' })
-$btnNavOther.Add_Click({ Show-Section 'other' })
-$btnNavBackup.Add_Click({ Show-Section 'backup' })
+Add-SectionLabel $tabCPU "CPU / ENERGIA" 18 16
+Add-SoftLabel $tabCPU "Ajustes de plano de energia e comportamento do processador." 18 42 520 30
+
+$btnCpuUltra   = New-LynextButton "CPU ULTRA" 18 90 170 42
+$btnCpuLite    = New-LynextButton "CPU LITE" 198 90 170 42
+$btnCpuThermal = New-LynextButton "TERMICO / QUIETO" 378 90 160 42
+$tabCPU.Controls.AddRange(@($btnCpuUltra,$btnCpuLite,$btnCpuThermal))
 
 # =========================================================
-# ACTIONS
+# TAB WINDOWS
+# =========================================================
+Add-SectionLabel $tabWin "WINDOWS / JOGOS" 18 16
+Add-SoftLabel $tabWin "Game Mode, HAGS, Game DVR e ajustes leves de latencia." 18 42 520 30
+
+$btnWinUltra = New-LynextButton "WINDOWS ULTRA" 18 90 170 42
+$btnWinLite  = New-LynextButton "WINDOWS LITE" 198 90 170 42
+$btnWinReset = New-LynextButton "RESET WINDOWS" 378 90 160 42
+$tabWin.Controls.AddRange(@($btnWinUltra,$btnWinLite,$btnWinReset))
+
+# =========================================================
+# TAB NVIDIA
+# =========================================================
+Add-SectionLabel $tabNvidia "NVIDIA" 18 16
+Add-SoftLabel $tabNvidia "Ajustes automaticos limitados ao que o driver / nvidia-smi suportam." 18 42 520 30
+
+$btnNvInfo  = New-LynextButton "SUPORTE / ESTADO" 18 90 170 42
+$btnNvUltra = New-LynextButton "NVIDIA ULTRA" 198 90 170 42
+$btnNvLite  = New-LynextButton "NVIDIA LITE" 378 90 160 42
+$btnNvReset = New-LynextButton "RESET NVIDIA" 18 145 170 42
+$btnNvPower = New-LynextButton "POWER LIMIT MANUAL" 198 145 170 42
+$tabNvidia.Controls.AddRange(@($btnNvInfo,$btnNvUltra,$btnNvLite,$btnNvReset,$btnNvPower))
+
+# =========================================================
+# TAB AMD / INTEL
+# =========================================================
+Add-SectionLabel $tabOther "AMD / INTEL" 18 16
+Add-SoftLabel $tabOther "Por enquanto esta aba mostra informacoes e direcao de politica, sem tuning automatico pesado." 18 42 520 36
+
+$btnAmdInfo   = New-LynextButton "AMD INFO" 18 95 170 42
+$btnIntelInfo = New-LynextButton "INTEL INFO" 198 95 170 42
+$btnPolicy    = New-LynextButton "GUIA RAPIDO" 378 95 160 42
+$tabOther.Controls.AddRange(@($btnAmdInfo,$btnIntelInfo,$btnPolicy))
+
+# =========================================================
+# TAB BACKUP
+# =========================================================
+Add-SectionLabel $tabBackup "BACKUP / RESET" 18 16
+Add-SoftLabel $tabBackup "Backup automatico dos principais ajustes antes dos modos prontos." 18 42 520 30
+
+$btnBackupCreate = New-LynextButton "CRIAR / ATUALIZAR BACKUP" 18 90 250 46
+$btnOpenFolder   = New-LynextButton "ABRIR PASTA LYNEXT" 285 90 250 46
+$btnOpenLogs     = New-LynextButton "ABRIR LOGS" 18 150 250 42
+$tabBackup.Controls.AddRange(@($btnBackupCreate,$btnOpenFolder,$btnOpenLogs))
+
+# =========================================================
+# TOOLTIPS
+# =========================================================
+$toolTip.SetToolTip($btnUltra, "Aplica CPU Ultra + Windows Ultra + NVIDIA Ultra quando suportado.")
+$toolTip.SetToolTip($btnLite, "Aplica CPU Lite + Windows Lite + NVIDIA Lite quando suportado.")
+$toolTip.SetToolTip($btnReset, "Restaura pelo backup salvo.")
+$toolTip.SetToolTip($btnInfo, "Mostra resumo do sistema no painel de saida.")
+
+$toolTip.SetToolTip($btnCpuUltra, "Modo agressivo de energia e boost.")
+$toolTip.SetToolTip($btnCpuLite, "Modo equilibrado para desempenho com menos estresse.")
+$toolTip.SetToolTip($btnCpuThermal, "Modo mais calmo, focado em temperatura e ruido.")
+
+$toolTip.SetToolTip($btnWinUltra, "Game Mode ON, DVR OFF, HAGS ON e prioridades mais agressivas.")
+$toolTip.SetToolTip($btnWinLite, "Game Mode ON, DVR OFF, HAGS ON e prioridades mais leves.")
+$toolTip.SetToolTip($btnWinReset, "Restaura os principais ajustes de Windows pelo backup.")
+
+$toolTip.SetToolTip($btnNvInfo, "Mostra informacoes do nvidia-smi, se houver.")
+$toolTip.SetToolTip($btnNvUltra, "Aplica politica Ultra e tenta usar o limite maximo suportado.")
+$toolTip.SetToolTip($btnNvLite, "Restaura power limit salvo e aplica politica Lite.")
+$toolTip.SetToolTip($btnNvReset, "Reseta clocks e power limit salvo.")
+$toolTip.SetToolTip($btnNvPower, "Define manualmente um power limit para GPU NVIDIA.")
+
+$toolTip.SetToolTip($btnAmdInfo, "Mostra informacoes de GPU AMD detectada.")
+$toolTip.SetToolTip($btnIntelInfo, "Mostra informacoes de GPU Intel detectada.")
+$toolTip.SetToolTip($btnPolicy, "Abre um resumo de politicas recomendadas para AMD e Intel.")
+
+$toolTip.SetToolTip($btnBackupCreate, "Salva o estado atual para reset futuro.")
+$toolTip.SetToolTip($btnOpenFolder, "Abre a pasta ProgramData\Lynext.")
+$toolTip.SetToolTip($btnOpenLogs, "Abre a pasta de logs.")
+
+# =========================================================
+# EVENTS
 # =========================================================
 $btnBackupCreate.Add_Click({
-    Start-LynextTask -Name 'Criar / Atualizar Backup' -Code (Get-BackupCode)
-})
-$btnBackupRefresh.Add_Click({
-    Start-LynextTask -Name 'Criar / Atualizar Backup' -Code (Get-BackupCode)
-})
-$btnQuickBackup.Add_Click({
-    Start-LynextTask -Name 'Criar / Atualizar Backup' -Code (Get-BackupCode)
+    Start-LynextTask -Name "Criar / Atualizar Backup" -Code (Get-BackupCode)
 })
 
 $btnInfo.Add_Click({
-    Start-LynextTask -Name 'Resumo do Sistema' -Code (Get-SummaryCode)
-})
-$btnQuickInfo.Add_Click({
-    Start-LynextTask -Name 'Resumo do Sistema' -Code (Get-SummaryCode)
+    Start-LynextTask -Name "Resumo do Sistema" -Code (Get-SummaryCode)
 })
 
-$btnCpuUltra.Add_Click({ Start-LynextTask -Name 'CPU Ultra' -Code (Get-CPUUltraCode) })
-$btnCpuLite.Add_Click({ Start-LynextTask -Name 'CPU Lite' -Code (Get-CPULiteCode) })
-$btnCpuThermal.Add_Click({ Start-LynextTask -Name 'CPU Termico / Quieto' -Code (Get-CPUThermalCode) })
+$btnCpuUltra.Add_Click({
+    Start-LynextTask -Name "CPU Ultra" -Code (Get-CPUUltraCode)
+})
 
-$btnWinUltra.Add_Click({ Start-LynextTask -Name 'Windows Ultra' -Code (Get-WindowsUltraCode) })
-$btnWinLite.Add_Click({ Start-LynextTask -Name 'Windows Lite' -Code (Get-WindowsLiteCode) })
+$btnCpuLite.Add_Click({
+    Start-LynextTask -Name "CPU Lite" -Code (Get-CPULiteCode)
+})
+
+$btnCpuThermal.Add_Click({
+    Start-LynextTask -Name "CPU Termico / Quieto" -Code (Get-CPUThermalCode)
+})
+
+$btnWinUltra.Add_Click({
+    Start-LynextTask -Name "Windows Ultra" -Code (Get-WindowsUltraCode)
+})
+
+$btnWinLite.Add_Click({
+    Start-LynextTask -Name "Windows Lite" -Code (Get-WindowsLiteCode)
+})
+
 $btnWinReset.Add_Click({
     if (-not (Test-Path $script:BackupFile)) {
-        [System.Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Backup nao encontrado.", "Lynext", "OK", "Warning") | Out-Null
         return
     }
-    Start-LynextTask -Name 'Reset Windows pelo Backup' -Code (Get-WindowsResetCode)
+    Start-LynextTask -Name "Reset Windows pelo Backup" -Code (Get-WindowsResetCode)
 })
 
 $btnUltra.Add_Click({
-    if (-not (Ensure-BackupExists)) { return }
+    if (-not (Test-Path $script:BackupFile)) {
+        Start-LynextTask -Name "Criar Backup Inicial" -Code (Get-BackupCode)
+        return
+    }
 
     $code = @"
 $(Get-CPUUltraCode)
+
 '---'
 $(Get-WindowsUltraCode)
+
 '---'
 if ((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join ' | ' -match 'NVIDIA') {
 $(Get-NvidiaUltraCode)
@@ -1411,17 +1165,21 @@ else {
 '---'
 'Lynext Ultra Performance concluido.'
 "@
-    Start-LynextTask -Name 'Lynext Ultra Performance' -Code $code -Confirm -ConfirmMessage 'O modo Ultra e mais agressivo. Deseja continuar?'
+    Start-LynextTask -Name "Lynext Ultra Performance" -Code $code -Confirm -ConfirmMessage "O modo Ultra e mais agressivo. Deseja continuar?"
 })
-$btnQuickUltra.Add_Click({ $btnUltra.PerformClick() })
 
 $btnLite.Add_Click({
-    if (-not (Ensure-BackupExists)) { return }
+    if (-not (Test-Path $script:BackupFile)) {
+        Start-LynextTask -Name "Criar Backup Inicial" -Code (Get-BackupCode)
+        return
+    }
 
     $code = @"
 $(Get-CPULiteCode)
+
 '---'
 $(Get-WindowsLiteCode)
+
 '---'
 if ((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join ' | ' -match 'NVIDIA') {
 $(Get-NvidiaLiteCode)
@@ -1432,26 +1190,26 @@ else {
 '---'
 'Lynext Lite concluido.'
 "@
-    Start-LynextTask -Name 'Lynext Lite' -Code $code
+    Start-LynextTask -Name "Lynext Lite" -Code $code
 })
-$btnQuickLite.Add_Click({ $btnLite.PerformClick() })
 
 $btnReset.Add_Click({
     if (-not (Test-Path $script:BackupFile)) {
-        [System.Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Backup nao encontrado.", "Lynext", "OK", "Warning") | Out-Null
         return
     }
 
     $code = @"
 $(Get-WindowsResetCode)
+
 '---'
 $(Get-NvidiaResetCode)
+
 '---'
 'Reset geral concluido.'
 "@
-    Start-LynextTask -Name 'Reset Geral' -Code $code -Confirm -ConfirmMessage 'Deseja restaurar os ajustes pelo backup?'
+    Start-LynextTask -Name "Reset Geral" -Code $code -Confirm -ConfirmMessage "Deseja restaurar os ajustes pelo backup?"
 })
-$btnQuickReset.Add_Click({ $btnReset.PerformClick() })
 
 $btnNvInfo.Add_Click({
     $code = @"
@@ -1477,30 +1235,35 @@ if (-not `$nvidiaSmi) {
 }
 & `$nvidiaSmi -q -d POWER,CLOCK
 "@
-    Start-LynextTask -Name 'NVIDIA Suporte / Estado' -Code $code
+    Start-LynextTask -Name "NVIDIA Suporte / Estado" -Code $code
 })
 
-$btnNvUltra.Add_Click({ Start-LynextTask -Name 'NVIDIA Ultra' -Code (Get-NvidiaUltraCode) })
+$btnNvUltra.Add_Click({
+    Start-LynextTask -Name "NVIDIA Ultra" -Code (Get-NvidiaUltraCode)
+})
+
 $btnNvLite.Add_Click({
     if (-not (Test-Path $script:BackupFile)) {
-        [System.Windows.Forms.MessageBox]::Show('Crie um backup antes.', 'Lynext', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Crie um backup antes.", "Lynext", "OK", "Warning") | Out-Null
         return
     }
-    Start-LynextTask -Name 'NVIDIA Lite' -Code (Get-NvidiaLiteCode)
+    Start-LynextTask -Name "NVIDIA Lite" -Code (Get-NvidiaLiteCode)
 })
+
 $btnNvReset.Add_Click({
     if (-not (Test-Path $script:BackupFile)) {
-        [System.Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Backup nao encontrado.", "Lynext", "OK", "Warning") | Out-Null
         return
     }
-    Start-LynextTask -Name 'NVIDIA Reset' -Code (Get-NvidiaResetCode)
+    Start-LynextTask -Name "NVIDIA Reset" -Code (Get-NvidiaResetCode)
 })
+
 $btnNvPower.Add_Click({
-    $watts = Show-InputDialog -Title 'Power Limit NVIDIA' -Label 'Valor em Watts:' -DefaultValue '200'
+    $watts = Show-InputDialog -Title "Power Limit NVIDIA" -Label "Valor em Watts:" -DefaultValue "200"
     if ([string]::IsNullOrWhiteSpace($watts)) { return }
 
     if ($watts -notmatch '^\d+(\.\d+)?$') {
-        [System.Windows.Forms.MessageBox]::Show('Valor invalido.', 'Lynext', 'OK', 'Error') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Valor invalido.", "Lynext", "OK", "Error") | Out-Null
         return
     }
 
@@ -1521,7 +1284,7 @@ if (-not `$nvidiaSmi) { throw 'nvidia-smi nao encontrado.' }
 & `$nvidiaSmi -pl $w | Out-Null
 'Power limit ajustado para $w W'
 "@
-    Start-LynextTask -Name 'NVIDIA Power Limit Manual' -Code $code
+    Start-LynextTask -Name "NVIDIA Power Limit Manual" -Code $code
 })
 
 $btnAmdInfo.Add_Click({
@@ -1539,7 +1302,7 @@ if (-not `$gpus) {
 '- Boost moderado'
 '- Sharpening leve a moderado'
 "@
-    Start-LynextTask -Name 'AMD Info' -Code $code
+    Start-LynextTask -Name "AMD Info" -Code $code
 })
 
 $btnIntelInfo.Add_Click({
@@ -1556,7 +1319,7 @@ if (-not `$gpus) {
 '- Ajustes conservadores'
 '- Foco maior em energia / estabilidade'
 "@
-    Start-LynextTask -Name 'Intel Info' -Code $code
+    Start-LynextTask -Name "Intel Info" -Code $code
 })
 
 $btnPolicy.Add_Click({
@@ -1579,44 +1342,65 @@ OBS:
 - O tuning automatico mais forte ficou focado em NVIDIA por enquanto.
 "@
     Append-Output $text -Clear
-    Set-Status 'Guia rapido exibido.' 'ok'
+    Set-Status "Guia rapido exibido." "ok"
 })
 
 $btnOpenFolder.Add_Click({
     Start-Process explorer.exe $script:LynextRoot
-    Set-Status 'Pasta Lynext aberta.' 'ok'
+    Set-Status "Pasta Lynext aberta." "ok"
 })
+
 $btnOpenLogs.Add_Click({
     Start-Process explorer.exe $script:LogDir
-    Set-Status 'Pasta de logs aberta.' 'ok'
+    Set-Status "Pasta de logs aberta." "ok"
 })
-$btnQuickLogs.Add_Click({ $btnOpenLogs.PerformClick() })
 
-$btnClearOutput.Add_Click({
-    $script:txtOutput.Clear()
-    Set-Status 'Painel limpo.' 'ok'
-})
-$btnCopyLogPath.Add_Click({
-    [System.Windows.Forms.MessageBox]::Show($script:LogFile, 'Log atual') | Out-Null
-})
+# =========================================================
+# STATUS / FOOTER
+# =========================================================
+$script:lblStatus = New-Object System.Windows.Forms.Label
+$script:lblStatus.Text = "Status: Pronto"
+$script:lblStatus.Font = New-Object System.Drawing.Font("Segoe UI",10,[System.Drawing.FontStyle]::Bold)
+$script:lblStatus.ForeColor = $okColor
+$script:lblStatus.AutoSize = $true
+$script:lblStatus.Location = New-Object System.Drawing.Point(24,725)
+
+$script:prg = New-Object System.Windows.Forms.ProgressBar
+$script:prg.Location = New-Object System.Drawing.Point(220,726)
+$script:prg.Size = New-Object System.Drawing.Size(300,14)
+$script:prg.Style = "Blocks"
+
+$lblLog = New-Object System.Windows.Forms.Label
+$lblLog.Text = "Log: $script:LogFile"
+$lblLog.Font = New-Object System.Drawing.Font("Segoe UI",8)
+$lblLog.ForeColor = $txtSoft
+$lblLog.AutoSize = $true
+$lblLog.Location = New-Object System.Drawing.Point(640,725)
+
+$form.Controls.AddRange(@(
+    $lblTitle,
+    $lblSub,
+    $lblCredit,
+    $panelLeft,
+    $panelOutput,
+    $script:lblStatus,
+    $script:prg,
+    $lblLog
+))
 
 # =========================================================
 # TIMER
 # =========================================================
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 350
-$timer.Add_Tick({ Poll-LynextTask })
+$timer.Add_Tick({
+    Poll-LynextTask
+})
 $timer.Start()
 
-# =========================================================
-# MONTAGEM FINAL
-# =========================================================
-$form.Controls.AddRange(@($header,$sidebar,$content,$outputWrap,$footer))
-Show-Section 'overview'
-
-Append-Output 'Lynext Performance Center iniciado.'
+Append-Output "Lynext Performance Center iniciado."
 Append-Output "Log: $script:LogFile"
-Set-Status 'Pronto' 'ok'
-Write-LogLine 'Lynext Performance Center iniciado'
+Set-Status "Pronto" "ok"
+Write-LogLine "Lynext Performance Center iniciado"
 
 [void]$form.ShowDialog()
