@@ -103,26 +103,6 @@ function Convert-ToEncodedCommand {
     [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Code))
 }
 
-function Open-LynextUrl {
-    param([string]$Url)
-
-    $candidates = @(
-        @{ FilePath = $Url; Arguments = @() },
-        @{ FilePath = "msedge.exe"; Arguments = @($Url) },
-        @{ FilePath = "explorer.exe"; Arguments = @($Url) }
-    )
-
-    foreach ($candidate in $candidates) {
-        try {
-            Start-Process -FilePath $candidate.FilePath -ArgumentList $candidate.Arguments -ErrorAction Stop | Out-Null
-            return $true
-        }
-        catch {}
-    }
-
-    return $false
-}
-
 function Get-ActiveAdapterName {
     try {
         $nic = Get-NetAdapter | Where-Object { $_.Status -eq "Up" -and $_.HardwareInterface } | Sort-Object ifIndex | Select-Object -First 1
@@ -1008,36 +988,21 @@ Get-DnsClientServerAddress -InterfaceAlias '$a' | Format-Table -Auto InterfaceAl
 # EVENTOS - LINKS
 # =========================
 $btnSpeedWeb.Add_Click({
-    if (Open-LynextUrl -Url "https://speed.cloudflare.com/") {
-        Set-Status "Speedtest web aberto." "ok"
-        Write-Log "Opened speedtest web"
-    }
-    else {
-        Set-Status "Falha ao abrir Speedtest web." "error"
-        Write-Log "Failed to open speedtest web" "ERROR"
-    }
+    Start-Process "https://speed.cloudflare.com/"
+    Set-Status "Speedtest web aberto." "ok"
+    Write-Log "Opened speedtest web"
 })
 
 $btnIntel.Add_Click({
-    if (Open-LynextUrl -Url "https://www.intel.com.br/content/www/br/pt/support/detect.html") {
-        Set-Status "Intel DSA aberto." "ok"
-        Write-Log "Opened Intel DSA"
-    }
-    else {
-        Set-Status "Falha ao abrir Intel DSA." "error"
-        Write-Log "Failed to open Intel DSA" "ERROR"
-    }
+    Start-Process "https://www.intel.com.br/content/www/br/pt/support/detect.html"
+    Set-Status "Intel DSA aberto." "ok"
+    Write-Log "Opened Intel DSA"
 })
 
 $btnRealtek.Add_Click({
-    if (Open-LynextUrl -Url "https://www.realtek.com/Download/Overview?menu_id=355") {
-        Set-Status "Portal Realtek aberto." "ok"
-        Write-Log "Opened Realtek"
-    }
-    else {
-        Set-Status "Falha ao abrir portal Realtek." "error"
-        Write-Log "Failed to open Realtek" "ERROR"
-    }
+    Start-Process "https://www.realtek.com/Download/Overview?menu_id=355"
+    Set-Status "Portal Realtek aberto." "ok"
+    Write-Log "Opened Realtek"
 })
 
 $btnLogs.Add_Click({
@@ -1079,4 +1044,3 @@ Write-Log "Lynext Rede iniciado"
 Set-Status "Pronto" "ok"
 
 [void]$form.ShowDialog()
-
