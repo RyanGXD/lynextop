@@ -68,8 +68,28 @@ function Test-IsAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Get-LynextPowerShellPath {
+    $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    if (Test-Path $systemPowerShell) {
+        return $systemPowerShell
+    }
+
+    return "powershell.exe"
+}
+
 function Ensure-Admin {
     if (-not (Test-IsAdministrator)) {
+        $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+
+        if ($scriptPath) {
+            Start-Process (Get-LynextPowerShellPath) -Verb RunAs -ArgumentList @(
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File", $scriptPath
+            ) | Out-Null
+            exit
+        }
+
         Show-Header "PERFORMANCE APP"
         Write-ErrL "Execute este script como Administrador."
         Pause-Lynext
@@ -470,7 +490,7 @@ function Apply-WindowsUltra {
     Write-Ok "Game Mode ON"
     Write-Ok "Game DVR OFF"
     Write-Ok "HAGS ON"
-    Write-WarnL "Visual Effects nao foram forçados por script."
+    Write-WarnL "Visual Effects nao foram forcados por script."
     Pause-Lynext
 }
 
@@ -1144,3 +1164,4 @@ function Start-PerformanceApp {
 }
 
 Start-PerformanceApp
+
