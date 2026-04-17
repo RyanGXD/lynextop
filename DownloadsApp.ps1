@@ -8,98 +8,211 @@ Add-Type -AssemblyName System.Drawing
 # =========================
 $destinoBase = Join-Path $env:USERPROFILE "Downloads\Instaladores"
 $downloadsAtivos = @{}
+$statusApps = @{}
+$categoryViews = @{}
+$repoBaseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
 
 # =========================
-# CORES
+# CORES (DARK + ROXO SUAVE)
 # =========================
-$bgMain      = [System.Drawing.Color]::FromArgb(12,12,12)
-$bgPanel     = [System.Drawing.Color]::FromArgb(22,22,22)
-$bgButton    = [System.Drawing.Color]::FromArgb(35,35,35)
-$bgButton2   = [System.Drawing.Color]::FromArgb(55,55,55)
-$fgMain      = [System.Drawing.Color]::FromArgb(235,235,235)
-$fgSoft      = [System.Drawing.Color]::FromArgb(160,160,160)
-$okColor     = [System.Drawing.Color]::FromArgb(110,220,140)
-$errColor    = [System.Drawing.Color]::FromArgb(255,110,110)
-$runColor    = [System.Drawing.Color]::FromArgb(255,190,80)
-$manualColor = [System.Drawing.Color]::FromArgb(90,180,255)
-$borderColor = [System.Drawing.Color]::FromArgb(60,60,60)
-$siteColor   = [System.Drawing.Color]::FromArgb(90,180,255)
+$bgMain      = [System.Drawing.Color]::FromArgb(14,14,18)
+$bgPanel     = [System.Drawing.Color]::FromArgb(22,22,30)
+$bgPanel2    = [System.Drawing.Color]::FromArgb(28,28,38)
+$bgButton    = [System.Drawing.Color]::FromArgb(44,44,58)
+$bgButton2   = [System.Drawing.Color]::FromArgb(60,60,78)
+$bgList      = [System.Drawing.Color]::FromArgb(16,16,22)
+
+$fgMain      = [System.Drawing.Color]::FromArgb(232,232,238)
+$fgSoft      = [System.Drawing.Color]::FromArgb(165,165,182)
+$fgMuted     = [System.Drawing.Color]::FromArgb(128,128,146)
+
+$accent      = [System.Drawing.Color]::FromArgb(132,108,186)
+$accentSoft  = [System.Drawing.Color]::FromArgb(90,76,132)
+
+$okColor     = [System.Drawing.Color]::FromArgb(110,200,140)
+$errColor    = [System.Drawing.Color]::FromArgb(220,100,100)
+$runColor    = [System.Drawing.Color]::FromArgb(220,180,100)
+$manualColor = [System.Drawing.Color]::FromArgb(120,175,235)
+
+$borderColor = [System.Drawing.Color]::FromArgb(72,72,90)
+$tabBackColor = [System.Drawing.Color]::FromArgb(52,52,62)
 
 # =========================
-# FUNCOES
+# BASE DE APPS
+# =========================
+$apps = @(
+    [PSCustomObject]@{
+        Nome = "CapFrameX"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Captura e analisa frametimes, FPS e percentis. Bom para comparar testes e validar se um tweak realmente melhorou o jogo."
+        Metodo = "Pagina"
+        Url = "https://www.capframex.com/download"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "ISLC"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Gerencia a standby list da memoria para reduzir travadas e melhorar a responsividade em jogos e multitarefa."
+        Metodo = "ISLCLatest"
+        Url = "https://www.wagnardsoft.com/intelligent-standby-list-cleaner-islc"
+        Arquivo = "ISLC.exe"
+        Fonte = "Site oficial (ultima versao)"
+    }
+    [PSCustomObject]@{
+        Nome = "MSI Afterburner"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Ferramenta de overclock, undervolt, fan curve e monitoramento da GPU. Ideal para ajuste fino e teste de estabilidade."
+        Metodo = "Pagina"
+        Url = "https://br.msi.com/Landing/afterburner/graphics-cards"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "MSI Utility v3"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Utilitario usado para ajustar politicas MSI e prioridade de interrupcoes em dispositivos PCIe."
+        Metodo = "Direto"
+        Url = "https://raw.githubusercontent.com/Sathango/Msi-Utility-v3/main/Msi%20Utility%20v3.exe"
+        Arquivo = "MsiUtilityV3.exe"
+        Fonte = "GitHub raw"
+    }
+    [PSCustomObject]@{
+        Nome = "NVIDIA Profile Inspector"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Editor avancado dos perfis internos da NVIDIA. Aqui ele baixa a ultima release estavel automaticamente."
+        Metodo = "GitHubLatestZip"
+        Url = "https://api.github.com/repos/Orbmu2k/nvidiaProfileInspector/releases"
+        Arquivo = "NVIDIAProfileInspector.zip"
+        Fonte = "GitHub latest stable"
+    }
+    [PSCustomObject]@{
+        Nome = "Power Settings Explorer"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Mostra e libera opcoes avancadas dos planos de energia do Windows para ajuste fino de desempenho e latencia."
+        Metodo = "Pagina"
+        Url = "https://www.mediafire.com/file/wt37sbsejk7iepm/PowerSettingsExplorer.zip"
+        Arquivo = ""
+        Fonte = "MediaFire"
+    }
+    [PSCustomObject]@{
+        Nome = "Process Lasso"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Automacao e ajuste de afinidade, prioridade e comportamento de processos para manter o sistema responsivo."
+        Metodo = "Pagina"
+        Url = "https://bitsum.com/download-process-lasso/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "hidusbf"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Utilitario para ajuste de polling rate de dispositivos USB/HID. Muito usado para mouse, mas exige cuidado."
+        Metodo = "Direto"
+        Url = "https://raw.githubusercontent.com/LordOfMice/hidusbf/master/hidusbf.zip"
+        Arquivo = "hidusbf.zip"
+        Fonte = "GitHub raw"
+    }
+
+    [PSCustomObject]@{
+        Nome = "CPU-Z"
+        Categoria = "Monitoramento"
+        Tipo = "Manual"
+        Descricao = "Mostra informacoes detalhadas do processador, placa-mae, memoria e clocks em tempo real."
+        Metodo = "Pagina"
+        Url = "https://www.cpuid.com/softwares/cpu-z.html"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "HWiNFO"
+        Categoria = "Monitoramento"
+        Tipo = "Manual"
+        Descricao = "Uma das melhores ferramentas para sensores, temperaturas, consumo, clocks, VRM e diagnostico geral do hardware."
+        Metodo = "Pagina"
+        Url = "https://www.hwinfo.com/download/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "LatencyMon"
+        Categoria = "Monitoramento"
+        Tipo = "Automatico"
+        Descricao = "Analisa DPC, ISR e pagefaults para identificar gargalos de latencia e problemas que causam stutter ou audio drop."
+        Metodo = "Direto"
+        Url = "https://www.resplendence.com/download/LatencyMon.exe"
+        Arquivo = "LatencyMon.exe"
+        Fonte = "Download direto oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "OCCT"
+        Categoria = "Monitoramento"
+        Tipo = "Manual"
+        Descricao = "Ferramenta de stress test e validacao para CPU, GPU, memoria, VRAM e fonte. Boa para estabilidade."
+        Metodo = "Pagina"
+        Url = "https://www.ocbase.com/download"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+
+    [PSCustomObject]@{
+        Nome = "Adobe Reader"
+        Categoria = "Suporte"
+        Tipo = "Manual"
+        Descricao = "Leitor de PDF oficial da Adobe para abrir, visualizar e comentar documentos PDF."
+        Metodo = "Pagina"
+        Url = "https://get.adobe.com/br/reader/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "AnyDesk"
+        Categoria = "Suporte"
+        Tipo = "Automatico"
+        Descricao = "Acesso remoto leve e rapido para suporte tecnico e manutencao a distancia."
+        Metodo = "Direto"
+        Url = "https://download.anydesk.com/AnyDesk.exe"
+        Arquivo = "AnyDesk.exe"
+        Fonte = "Download direto oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "Chrome"
+        Categoria = "Suporte"
+        Tipo = "Automatico"
+        Descricao = "Navegador da Google. Aqui usa o instalador enterprise 64-bit para download direto."
+        Metodo = "Direto"
+        Url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+        Arquivo = "Chrome.msi"
+        Fonte = "Download direto oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "Java"
+        Categoria = "Suporte"
+        Tipo = "Manual"
+        Descricao = "Pagina oficial do Java para baixar e instalar a versao necessaria de acordo com o teu uso."
+        Metodo = "Pagina"
+        Url = "https://www.java.com/pt-br/download/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+)
+
+# =========================
+# FUNCOES VISUAIS
 # =========================
 function Garantir-Pasta {
     param([string]$Pasta)
 
     if (!(Test-Path $Pasta)) {
         New-Item -ItemType Directory -Path $Pasta -Force | Out-Null
-    }
-}
-
-function Get-LynextPowerShellPath {
-    $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
-    if (Test-Path $systemPowerShell) {
-        return $systemPowerShell
-    }
-
-    return "powershell.exe"
-}
-
-function Escape-SingleQuotedText {
-    param([string]$Text)
-
-    if ($null -eq $Text) {
-        return ""
-    }
-
-    return ($Text -replace "'", "''")
-}
-
-function Convert-ToEncodedCommand {
-    param([string]$Code)
-
-    return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Code))
-}
-
-function Open-LynextUrl {
-    param([string]$Url)
-
-    $candidates = @(
-        @{ FilePath = $Url; Arguments = @() },
-        @{ FilePath = "msedge.exe"; Arguments = @($Url) },
-        @{ FilePath = "explorer.exe"; Arguments = @($Url) }
-    )
-
-    foreach ($candidate in $candidates) {
-        try {
-            Start-Process -FilePath $candidate.FilePath -ArgumentList $candidate.Arguments -ErrorAction Stop | Out-Null
-            return $true
-        }
-        catch {}
-    }
-
-    return $false
-}
-
-function Oferecer-SiteOficial {
-    param(
-        [string]$Nome,
-        [string]$SiteUrl
-    )
-
-    if ([string]::IsNullOrWhiteSpace($SiteUrl)) {
-        return
-    }
-
-    $resposta = [System.Windows.Forms.MessageBox]::Show(
-        "O download direto de $Nome falhou. Deseja abrir o site oficial no navegador?",
-        "Lynext",
-        [System.Windows.Forms.MessageBoxButtons]::YesNo,
-        [System.Windows.Forms.MessageBoxIcon]::Question
-    )
-
-    if ($resposta -eq [System.Windows.Forms.DialogResult]::Yes) {
-        [void](Open-LynextUrl -Url $SiteUrl)
     }
 }
 
@@ -141,8 +254,8 @@ function Criar-Botao {
         [string]$Texto,
         [int]$X,
         [int]$Y,
-        [int]$Largura = 120,
-        [int]$Altura = 32
+        [int]$Largura = 140,
+        [int]$Altura = 34
     )
 
     $btn = New-Object System.Windows.Forms.Button
@@ -157,7 +270,7 @@ function Criar-Botao {
     $btn.FlatAppearance.BorderSize = 1
     $btn.FlatAppearance.BorderColor = $borderColor
     $btn.FlatAppearance.MouseOverBackColor = $bgButton2
-    $btn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(70,70,70)
+    $btn.FlatAppearance.MouseDownBackColor = $accentSoft
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
     return $btn
 }
@@ -167,14 +280,57 @@ function Criar-Painel {
         [int]$X,
         [int]$Y,
         [int]$Largura,
-        [int]$Altura
+        [int]$Altura,
+        $Cor = $bgPanel
     )
 
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Location = New-Object System.Drawing.Point($X, $Y)
     $panel.Size = New-Object System.Drawing.Size($Largura, $Altura)
-    $panel.BackColor = $bgPanel
+    $panel.BackColor = $Cor
+    $panel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     return $panel
+}
+
+function Criar-Lista {
+    param(
+        [int]$X,
+        [int]$Y,
+        [int]$Largura,
+        [int]$Altura
+    )
+
+    $list = New-Object System.Windows.Forms.ListBox
+    $list.Location = New-Object System.Drawing.Point($X, $Y)
+    $list.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $list.BackColor = $bgList
+    $list.ForeColor = $fgMain
+    $list.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $list.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $list.IntegralHeight = $false
+    $list.DisplayMember = "Nome"
+    return $list
+}
+
+function Criar-TextoLeitura {
+    param(
+        [int]$X,
+        [int]$Y,
+        [int]$Largura,
+        [int]$Altura
+    )
+
+    $txt = New-Object System.Windows.Forms.TextBox
+    $txt.Location = New-Object System.Drawing.Point($X, $Y)
+    $txt.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $txt.Multiline = $true
+    $txt.ReadOnly = $true
+    $txt.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $txt.BackColor = $bgList
+    $txt.ForeColor = $fgMain
+    $txt.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $txt.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+    return $txt
 }
 
 function Set-Status {
@@ -195,15 +351,125 @@ function Set-Status {
     }
 }
 
+# =========================
+# FUNCOES DE DOWNLOAD
+# =========================
+function Get-WebHeaders {
+    return @{
+        "User-Agent" = "Lynext-Downloader"
+        "Accept"     = "*/*"
+    }
+}
+
+function Get-LatestGitHubStableAsset {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoApiUrl,
+        [string]$ExtensaoDesejada = ".zip"
+    )
+
+    try {
+        $headers = @{
+            "User-Agent" = "Lynext-Downloader"
+            "Accept"     = "application/vnd.github+json"
+        }
+
+        $releases = Invoke-RestMethod -Uri $RepoApiUrl -Headers $headers -UseBasicParsing -ErrorAction Stop
+
+        if (-not $releases) {
+            return $null
+        }
+
+        $releaseEstavel = $releases | Where-Object {
+            $_.prerelease -eq $false -and $_.draft -eq $false
+        } | Select-Object -First 1
+
+        if (-not $releaseEstavel) {
+            return $null
+        }
+
+        $asset = $releaseEstavel.assets | Where-Object {
+            $_.name -like "*$ExtensaoDesejada"
+        } | Select-Object -First 1
+
+        if (-not $asset) {
+            return $null
+        }
+
+        return [PSCustomObject]@{
+            Url         = $asset.browser_download_url
+            NomeArquivo = $asset.name
+            Versao      = $releaseEstavel.tag_name
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-LatestISLCAsset {
+    try {
+        $headers = Get-WebHeaders
+
+        $listagem = Invoke-WebRequest `
+            -Uri "https://www.wagnardsoft.com/intelligent-standby-list-cleaner-islc" `
+            -Headers $headers `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $matchPost = [regex]::Matches(
+            $listagem.Content,
+            'href="([^"]*?/content/Download-Intelligent-standby-list-cleaner-ISLC-[^"]*)"'
+        ) | Select-Object -First 1
+
+        if (-not $matchPost) {
+            throw "Nao foi possivel localizar a pagina da versao atual do ISLC."
+        }
+
+        $postUrl = $matchPost.Groups[1].Value
+        if ($postUrl -notmatch '^https?://') {
+            $postUrl = "https://www.wagnardsoft.com" + $postUrl
+        }
+
+        $paginaVersao = Invoke-WebRequest `
+            -Uri $postUrl `
+            -Headers $headers `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $matchExe = [regex]::Matches(
+            $paginaVersao.Content,
+            'href="([^"]*?/ISLC/[^"]+\.exe)"'
+        ) | Select-Object -First 1
+
+        if (-not $matchExe) {
+            throw "Nao foi possivel localizar o executavel do ISLC."
+        }
+
+        $exeUrl = $matchExe.Groups[1].Value
+        if ($exeUrl -notmatch '^https?://') {
+            $exeUrl = "https://www.wagnardsoft.com" + $exeUrl
+        }
+
+        return [PSCustomObject]@{
+            Url         = $exeUrl
+            NomeArquivo = "ISLC.exe"
+            Versao      = "Atual"
+        }
+    }
+    catch {
+        return [PSCustomObject]@{
+            Url         = "https://www.wagnardsoft.com/ISLC/ISLC%20v1.0.4.5.exe"
+            NomeArquivo = "ISLC.exe"
+            Versao      = "Fallback"
+        }
+    }
+}
+
 function Iniciar-DownloadExterno {
     param(
         [string]$Nome,
         [string]$Url,
-        [string]$Arquivo,
-        [string]$SiteUrl,
-        [System.Windows.Forms.Label]$StatusLabel,
-        [System.Windows.Forms.Label]$GeralLabel,
-        [System.Windows.Forms.ProgressBar]$Barra
+        [string]$Arquivo
     )
 
     try {
@@ -214,61 +480,361 @@ function Iniciar-DownloadExterno {
             Remove-Item $saida -Force -ErrorAction SilentlyContinue
         }
 
-        $urlSafe = Escape-SingleQuotedText $Url
-        $saidaSafe = Escape-SingleQuotedText $saida
-
         $script = @"
 `$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-}
-catch {}
-
-try {
-    if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
-        Start-BitsTransfer -Source '$urlSafe' -Destination '$saidaSafe' -ErrorAction Stop
-    }
-    else {
-        Invoke-WebRequest -Uri '$urlSafe' -OutFile '$saidaSafe' -UseBasicParsing -ErrorAction Stop
-    }
+    Invoke-WebRequest -Uri '$Url' -OutFile '$saida' -UseBasicParsing -Headers @{ 'User-Agent'='Lynext-Downloader' }
+    exit 0
 }
 catch {
-    try {
-        Invoke-WebRequest -Uri '$urlSafe' -OutFile '$saidaSafe' -UseBasicParsing -ErrorAction Stop
-    }
-    catch {
-        exit 1
-    }
+    exit 1
 }
-
-exit 0
 "@
 
-        $encoded = Convert-ToEncodedCommand $script
-
-        $proc = Start-Process (Get-LynextPowerShellPath) `
-            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encoded) `
+        $proc = Start-Process powershell.exe `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command $script" `
             -WindowStyle Hidden `
             -PassThru
 
         $downloadsAtivos[$Nome] = [PSCustomObject]@{
             ProcessoId = $proc.Id
             Arquivo    = $saida
-            SiteUrl    = $SiteUrl
-            Status     = $StatusLabel
             Finalizado = $false
-            FalhaTratada = $false
         }
 
-        Set-Status $StatusLabel "Baixando..." "andando"
-        $GeralLabel.Text = "Baixando $Nome..."
-        $Barra.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+        $statusApps[$Nome] = [PSCustomObject]@{
+            Texto = "Baixando..."
+            Tipo  = "andando"
+        }
+
+        return $true
     }
     catch {
-        Set-Status $StatusLabel "Erro [X]" "erro"
-        $GeralLabel.Text = "Falha ao iniciar $Nome."
-        $Barra.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+        $statusApps[$Nome] = [PSCustomObject]@{
+            Texto = "Erro [X]"
+            Tipo  = "erro"
+        }
+        return $false
     }
+}
+
+function Resolver-DownloadInfo {
+    param($App)
+
+    switch ($App.Metodo) {
+        "Direto" {
+            return [PSCustomObject]@{
+                Url     = $App.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        "GitHubLatestZip" {
+            $asset = Get-LatestGitHubStableAsset -RepoApiUrl $App.Url -ExtensaoDesejada ".zip"
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url     = $asset.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        "ISLCLatest" {
+            $asset = Get-LatestISLCAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url     = $asset.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        default {
+            return $null
+        }
+    }
+}
+
+# =========================
+# FUNCOES DE UI / DADOS
+# =========================
+function Get-AppStatusInfo {
+    param([string]$Nome)
+
+    if ($statusApps.ContainsKey($Nome)) {
+        return $statusApps[$Nome]
+    }
+
+    return [PSCustomObject]@{
+        Texto = "Aguardando"
+        Tipo  = "normal"
+    }
+}
+
+function Get-SelectedAppFromCategory {
+    param([string]$Categoria)
+
+    if (-not $categoryViews.ContainsKey($Categoria)) {
+        return $null
+    }
+
+    $view = $categoryViews[$Categoria]
+
+    if ($null -ne $view.ListaAuto.SelectedItem) {
+        return $view.ListaAuto.SelectedItem
+    }
+
+    if ($null -ne $view.ListaManual.SelectedItem) {
+        return $view.ListaManual.SelectedItem
+    }
+
+    return $null
+}
+
+function AtualizarDetalhesCategoria {
+    param([string]$Categoria)
+
+    if (-not $categoryViews.ContainsKey($Categoria)) {
+        return
+    }
+
+    $view = $categoryViews[$Categoria]
+    $app = Get-SelectedAppFromCategory $Categoria
+
+    if ($null -eq $app) {
+        $view.Titulo.Text = "Selecione um app"
+        $view.Tipo.Text = "Tipo: -"
+        $view.Fonte.Text = "Fonte: -"
+        $view.Arquivo.Text = "Arquivo: -"
+        $view.Descricao.Text = "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
+        $view.Acao.Text = "Selecionar app"
+        $view.Acao.Enabled = $false
+        Set-Status $view.Status "Aguardando selecao." "normal"
+        return
+    }
+
+    $status = Get-AppStatusInfo $app.Nome
+
+    $view.Titulo.Text = $app.Nome
+    $view.Tipo.Text = "Tipo: $($app.Tipo)"
+    $view.Fonte.Text = "Fonte: $($app.Fonte)"
+    if ([string]::IsNullOrWhiteSpace($app.Arquivo)) {
+        $view.Arquivo.Text = "Arquivo: aberto pelo site"
+    }
+    else {
+        $view.Arquivo.Text = "Arquivo: $($app.Arquivo)"
+    }
+    $view.Descricao.Text = $app.Descricao
+
+    if ($app.Tipo -eq "Automatico") {
+        $view.Acao.Text = "Baixar"
+    }
+    else {
+        $view.Acao.Text = "Abrir pagina"
+    }
+
+    $view.Acao.Enabled = $true
+    Set-Status $view.Status $status.Text $status.Tipo
+}
+
+function PopularListaApps {
+    param(
+        [System.Windows.Forms.ListBox]$Lista,
+        [object[]]$Itens
+    )
+
+    $Lista.Items.Clear()
+
+    foreach ($item in ($Itens | Sort-Object Nome)) {
+        [void]$Lista.Items.Add($item)
+    }
+}
+
+function AbrirPastaDownloads {
+    Garantir-Pasta $destinoBase
+    Start-Process explorer.exe $destinoBase | Out-Null
+}
+
+function ExecutarAcaoDoApp {
+    param([string]$Categoria)
+
+    $app = Get-SelectedAppFromCategory $Categoria
+    if ($null -eq $app) {
+        return
+    }
+
+    if ($app.Tipo -eq "Manual") {
+        try {
+            Start-Process $app.Url
+            $statusApps[$app.Nome] = [PSCustomObject]@{
+                Texto = "Pagina aberta [OK]"
+                Tipo  = "manual"
+            }
+            $geral.Text = "Pagina de $($app.Nome) aberta."
+        }
+        catch {
+            $statusApps[$app.Nome] = [PSCustomObject]@{
+                Texto = "Erro [X]"
+                Tipo  = "erro"
+            }
+            $geral.Text = "Falha ao abrir pagina de $($app.Nome)."
+        }
+
+        AtualizarDetalhesCategoria $Categoria
+        return
+    }
+
+    $geral.Text = "Preparando download de $($app.Nome)..."
+    $statusApps[$app.Nome] = [PSCustomObject]@{
+        Texto = "Preparando download..."
+        Tipo  = "andando"
+    }
+    AtualizarDetalhesCategoria $Categoria
+
+    $downloadInfo = Resolver-DownloadInfo $app
+
+    if ($null -eq $downloadInfo) {
+        $statusApps[$app.Nome] = [PSCustomObject]@{
+            Texto = "Erro ao obter versao [X]"
+            Tipo  = "erro"
+        }
+        $geral.Text = "Falha ao resolver download de $($app.Nome)."
+        AtualizarDetalhesCategoria $Categoria
+        return
+    }
+
+    $ok = Iniciar-DownloadExterno -Nome $app.Nome -Url $downloadInfo.Url -Arquivo $downloadInfo.Arquivo
+
+    if ($ok) {
+        $geral.Text = "Baixando $($app.Nome)..."
+    }
+    else {
+        $geral.Text = "Falha ao iniciar $($app.Nome)."
+    }
+
+    AtualizarDetalhesCategoria $Categoria
+}
+
+function CriarAbaCategoria {
+    param(
+        [string]$Categoria,
+        [System.Windows.Forms.TabControl]$TabControl
+    )
+
+    $tab = New-Object System.Windows.Forms.TabPage
+    $tab.Text = $Categoria
+    $tab.BackColor = $bgMain
+    $tab.ForeColor = $fgMain
+
+    $painelEsquerdo = Criar-Painel 16 18 400 540 $bgPanel
+    $tab.Controls.Add($painelEsquerdo)
+
+    $lblAuto = Criar-Label "Automatico" 16 14 11 $true $accent
+    $painelEsquerdo.Controls.Add($lblAuto)
+
+    $lblAutoSub = Criar-Label "Baixa direto para Downloads\Instaladores" 16 36 9 $false $fgSoft
+    $painelEsquerdo.Controls.Add($lblAutoSub)
+
+    $listaAuto = Criar-Lista 16 60 365 180
+    $painelEsquerdo.Controls.Add($listaAuto)
+
+    $lblManual = Criar-Label "Manual" 16 260 11 $true $accent
+    $painelEsquerdo.Controls.Add($lblManual)
+
+    $lblManualSub = Criar-Label "Abre a pagina oficial para baixar manualmente" 16 282 9 $false $fgSoft
+    $painelEsquerdo.Controls.Add($lblManualSub)
+
+    $listaManual = Criar-Lista 16 306 365 180
+    $painelEsquerdo.Controls.Add($listaManual)
+
+    $painelDireito = Criar-Painel 432 18 430 540 $bgPanel2
+    $tab.Controls.Add($painelDireito)
+
+    $detTitulo = Criar-Label "Selecione um app" 16 18 15 $true $fgMain
+    $painelDireito.Controls.Add($detTitulo)
+
+    $detTipo = Criar-Label "Tipo: -" 16 56 10 $false $fgSoft
+    $painelDireito.Controls.Add($detTipo)
+
+    $detFonte = Criar-Label "Fonte: -" 16 80 10 $false $fgSoft
+    $painelDireito.Controls.Add($detFonte)
+
+    $detArquivo = Criar-Label "Arquivo: -" 16 104 10 $false $fgSoft
+    $painelDireito.Controls.Add($detArquivo)
+
+    $detDescTitulo = Criar-Label "O que ele faz" 16 140 11 $true $accent
+    $painelDireito.Controls.Add($detDescTitulo)
+
+    $detDesc = Criar-TextoLeitura 16 166 395 185
+    $detDesc.Text = "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
+    $painelDireito.Controls.Add($detDesc)
+
+    $detStatusTitulo = Criar-Label "Status" 16 378 11 $true $accent
+    $painelDireito.Controls.Add($detStatusTitulo)
+
+    $detStatus = Criar-Label "Aguardando selecao." 16 404 10 $false $fgSoft
+    $painelDireito.Controls.Add($detStatus)
+
+    $btnAcao = Criar-Botao "Selecionar app" 16 455 180 36
+    $btnAcao.Enabled = $false
+    $painelDireito.Controls.Add($btnAcao)
+
+    $btnPasta = Criar-Botao "Abrir pasta" 212 455 140 36
+    $painelDireito.Controls.Add($btnPasta)
+
+    $itemsCategoria = $apps | Where-Object { $_.Categoria -eq $Categoria }
+    $itemsAuto = $itemsCategoria | Where-Object { $_.Tipo -eq "Automatico" } | Sort-Object Nome
+    $itemsManual = $itemsCategoria | Where-Object { $_.Tipo -eq "Manual" } | Sort-Object Nome
+
+    PopularListaApps -Lista $listaAuto -Itens $itemsAuto
+    PopularListaApps -Lista $listaManual -Itens $itemsManual
+
+    $categoryViews[$Categoria] = [PSCustomObject]@{
+        Tab         = $tab
+        ListaAuto   = $listaAuto
+        ListaManual = $listaManual
+        Titulo      = $detTitulo
+        Tipo        = $detTipo
+        Fonte       = $detFonte
+        Arquivo     = $detArquivo
+        Descricao   = $detDesc
+        Status      = $detStatus
+        Acao        = $btnAcao
+    }
+
+    $listaAuto.Add_SelectedIndexChanged({
+        if ($listaAuto.SelectedIndex -ge 0) {
+            $listaManual.ClearSelected()
+        }
+        AtualizarDetalhesCategoria $Categoria
+    }.GetNewClosure())
+
+    $listaManual.Add_SelectedIndexChanged({
+        if ($listaManual.SelectedIndex -ge 0) {
+            $listaAuto.ClearSelected()
+        }
+        AtualizarDetalhesCategoria $Categoria
+    }.GetNewClosure())
+
+    $listaAuto.Add_DoubleClick({
+        if ($listaAuto.SelectedIndex -ge 0) {
+            ExecutarAcaoDoApp $Categoria
+        }
+    }.GetNewClosure())
+
+    $listaManual.Add_DoubleClick({
+        if ($listaManual.SelectedIndex -ge 0) {
+            ExecutarAcaoDoApp $Categoria
+        }
+    }.GetNewClosure())
+
+    $btnAcao.Add_Click({
+        ExecutarAcaoDoApp $Categoria
+    }.GetNewClosure())
+
+    $btnPasta.Add_Click({
+        AbrirPastaDownloads
+    }.GetNewClosure())
+
+    $TabControl.TabPages.Add($tab) | Out-Null
 }
 
 # =========================
@@ -276,7 +842,7 @@ exit 0
 # =========================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Lynext - Downloads"
-$form.Size = New-Object System.Drawing.Size(700, 470)
+$form.Size = New-Object System.Drawing.Size(920, 780)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
@@ -285,220 +851,45 @@ $form.Topmost = $true
 $form.BackColor = $bgMain
 $form.ForeColor = $fgMain
 
-$titulo = Criar-Label "Central de Downloads" 225 18 16 $true
+$titulo = Criar-Label "Central de Downloads" 320 20 17 $true $fgMain
 $form.Controls.Add($titulo)
 
-$subtitulo = Criar-Label "Created by RyanGXD" 265 48 9 $false $fgSoft
+$subtitulo = Criar-Label "Performance, monitoramento e suporte" 300 52 9 $false $fgSoft
 $form.Controls.Add($subtitulo)
 
-# =========================
-# PAINEL AUTOMATICO
-# =========================
-$panelAuto = Criar-Painel 28 90 630 140
-$form.Controls.Add($panelAuto)
+$tabControl = New-Object System.Windows.Forms.TabControl
+$tabControl.Location = New-Object System.Drawing.Point(12, 92)
+$tabControl.Size = New-Object System.Drawing.Size(890, 600)
+$tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$tabControl.BackColor = $tabBackColor
+$form.Controls.Add($tabControl)
 
-$autoTitulo = Criar-Label "AUTOMATICO" 18 14 11 $true
-$panelAuto.Controls.Add($autoTitulo)
+CriarAbaCategoria -Categoria "Performance" -TabControl $tabControl
+CriarAbaCategoria -Categoria "Monitoramento" -TabControl $tabControl
+CriarAbaCategoria -Categoria "Suporte" -TabControl $tabControl
 
-$autoSub = Criar-Label "Baixa direto para Downloads\Instaladores" 18 38 9 $false $fgSoft
-$panelAuto.Controls.Add($autoSub)
-
-$chromeNome = Criar-Label "Chrome" 18 78 10 $false
-$panelAuto.Controls.Add($chromeNome)
-
-$chromeStatus = Criar-Label "Aguardando" 280 78 10 $false $fgSoft
-$panelAuto.Controls.Add($chromeStatus)
-
-$btnChrome = Criar-Botao "Baixar" 485 72 110 32
-$panelAuto.Controls.Add($btnChrome)
-
-$anydeskNome = Criar-Label "AnyDesk" 18 108 10 $false
-$panelAuto.Controls.Add($anydeskNome)
-
-$anydeskStatus = Criar-Label "Aguardando" 280 108 10 $false $fgSoft
-$panelAuto.Controls.Add($anydeskStatus)
-
-$btnAnyDesk = Criar-Botao "Baixar" 485 102 110 32
-$panelAuto.Controls.Add($btnAnyDesk)
-
-# =========================
-# PAINEL MANUAL
-# =========================
-$panelManual = Criar-Painel 28 245 630 140
-$form.Controls.Add($panelManual)
-
-$manualTitulo = Criar-Label "MANUAL" 18 14 11 $true
-$panelManual.Controls.Add($manualTitulo)
-
-$manualSub = Criar-Label "Abre a pagina oficial para baixar manualmente" 18 38 9 $false $fgSoft
-$panelManual.Controls.Add($manualSub)
-
-$javaNome = Criar-Label "Java" 18 78 10 $false
-$panelManual.Controls.Add($javaNome)
-
-$javaStatus = Criar-Label "Aguardando" 280 78 10 $false $fgSoft
-$panelManual.Controls.Add($javaStatus)
-
-$btnJava = Criar-Botao "Abrir pagina" 455 72 140 32
-$panelManual.Controls.Add($btnJava)
-
-$adobeNome = Criar-Label "Adobe Reader" 18 108 10 $false
-$panelManual.Controls.Add($adobeNome)
-
-$adobeStatus = Criar-Label "Aguardando" 280 108 10 $false $fgSoft
-$panelManual.Controls.Add($adobeStatus)
-
-$btnAdobe = Criar-Botao "Abrir pagina" 455 102 140 32
-$panelManual.Controls.Add($btnAdobe)
+foreach ($tab in $tabControl.TabPages) {
+    $tab.BackColor = $bgMain
+    $tab.ForeColor = $fgMain
+}
 
 # =========================
 # RODAPE
 # =========================
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = New-Object System.Drawing.Point(28, 395)
-$progress.Size = New-Object System.Drawing.Size(420, 18)
+$progress.Location = New-Object System.Drawing.Point(16, 710)
+$progress.Size = New-Object System.Drawing.Size(560, 18)
 $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $progress.Minimum = 0
 $progress.Maximum = 100
 $progress.Value = 0
 $form.Controls.Add($progress)
 
-$geral = Criar-Label "Pronto para iniciar." 28 418 9 $false $fgSoft
+$geral = Criar-Label "Pronto para iniciar." 16 732 9 $false $fgSoft
 $form.Controls.Add($geral)
 
-$btnTudo = Criar-Botao "Baixar automaticos" 468 390 130 32
-$form.Controls.Add($btnTudo)
-
-$btnFechar = Criar-Botao "Fechar" 608 390 50 32
+$btnFechar = Criar-Botao "Fechar" 795 704 90 34
 $form.Controls.Add($btnFechar)
-
-# =========================
-# TIMER
-# =========================
-$timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 700
-
-$timer.Add_Tick({
-    $ativos = 0
-    $concluidos = 0
-
-    foreach ($nome in @("Chrome","AnyDesk")) {
-        if ($downloadsAtivos.ContainsKey($nome)) {
-            $info = $downloadsAtivos[$nome]
-
-            if (-not $info.Finalizado) {
-                $proc = Get-Process -Id $info.ProcessoId -ErrorAction SilentlyContinue
-
-                if ($proc) {
-                    $ativos++
-                    if (Test-Path $info.Arquivo) {
-                        try {
-                            $tam = (Get-Item $info.Arquivo).Length
-                            if ($tam -gt 0) {
-                                $mb = [math]::Round($tam / 1MB, 2)
-                                Set-Status $info.Status "Baixando... $mb MB" "andando"
-                            }
-                        }
-                        catch {}
-                    }
-                }
-                else {
-                    $info.Finalizado = $true
-                    $downloadsAtivos[$nome] = $info
-
-                    if ((Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
-                        Set-Status $info.Status "Concluido [OK]" "ok"
-                        $geral.Text = "$nome concluido."
-                    }
-                    else {
-                        Set-Status $info.Status "Erro [X]" "erro"
-                        $geral.Text = "Falha no download de $nome. Use o site oficial."
-
-                        if (-not $info.FalhaTratada) {
-                            $info.FalhaTratada = $true
-                            $downloadsAtivos[$nome] = $info
-                            Oferecer-SiteOficial -Nome $nome -SiteUrl $info.SiteUrl
-                        }
-                    }
-                }
-            }
-
-            if ($info.Finalizado -and (Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
-                $concluidos++
-            }
-        }
-    }
-
-    $total = 2
-    if ($ativos -gt 0) {
-        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-    }
-    else {
-        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
-        $progress.Value = [math]::Min([int](($concluidos / $total) * 100), 100)
-    }
-})
-
-$timer.Start()
-
-# =========================
-# EVENTOS
-# =========================
-$btnChrome.Add_Click({
-    Iniciar-DownloadExterno `
-        -Nome "Chrome" `
-        -Url "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi" `
-        -Arquivo "Chrome.msi" `
-        -SiteUrl "https://www.google.com/chrome/" `
-        -StatusLabel $chromeStatus `
-        -GeralLabel $geral `
-        -Barra $progress
-})
-
-$btnAnyDesk.Add_Click({
-    Iniciar-DownloadExterno `
-        -Nome "AnyDesk" `
-        -Url "https://download.anydesk.com/AnyDesk.exe" `
-        -Arquivo "AnyDesk.exe" `
-        -SiteUrl "https://anydesk.com/pt/downloads/windows" `
-        -StatusLabel $anydeskStatus `
-        -GeralLabel $geral `
-        -Barra $progress
-})
-
-$btnJava.Add_Click({
-    try {
-        if (-not (Open-LynextUrl -Url "https://www.java.com/pt-br/download/")) {
-            throw "Nao foi possivel abrir o navegador."
-        }
-        Set-Status $javaStatus "Pagina aberta [OK]" "manual"
-        $geral.Text = "Pagina do Java aberta."
-    }
-    catch {
-        Set-Status $javaStatus "Erro [X]" "erro"
-        $geral.Text = "Falha ao abrir pagina do Java."
-    }
-})
-
-$btnAdobe.Add_Click({
-    try {
-        if (-not (Open-LynextUrl -Url "https://get.adobe.com/br/reader/")) {
-            throw "Nao foi possivel abrir o navegador."
-        }
-        Set-Status $adobeStatus "Pagina aberta [OK]" "manual"
-        $geral.Text = "Pagina do Adobe Reader aberta."
-    }
-    catch {
-        Set-Status $adobeStatus "Erro [X]" "erro"
-        $geral.Text = "Falha ao abrir pagina do Adobe Reader."
-    }
-})
-
-$btnTudo.Add_Click({
-    $btnChrome.PerformClick()
-    Start-Sleep -Milliseconds 250
-    $btnAnyDesk.PerformClick()
-})
 
 $btnFechar.Add_Click({
     $temAtivo = $false
@@ -520,5 +911,104 @@ $btnFechar.Add_Click({
 
     $form.Close()
 })
+
+# =========================
+# TIMER
+# =========================
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 700
+
+$timer.Add_Tick({
+    $ativos = 0
+    $concluidos = 0
+    $total = $downloadsAtivos.Count
+
+    foreach ($nome in @($downloadsAtivos.Keys)) {
+        $info = $downloadsAtivos[$nome]
+
+        if (-not $info.Finalizado) {
+            $proc = Get-Process -Id $info.ProcessoId -ErrorAction SilentlyContinue
+
+            if ($proc) {
+                $ativos++
+
+                if (Test-Path $info.Arquivo) {
+                    try {
+                        $tam = (Get-Item $info.Arquivo).Length
+                        if ($tam -gt 0) {
+                            $mb = [math]::Round($tam / 1MB, 2)
+                            $statusApps[$nome] = [PSCustomObject]@{
+                                Texto = "Baixando... $mb MB"
+                                Tipo  = "andando"
+                            }
+                        }
+                    }
+                    catch {
+                        $statusApps[$nome] = [PSCustomObject]@{
+                            Texto = "Baixando..."
+                            Tipo  = "andando"
+                        }
+                    }
+                }
+                else {
+                    $statusApps[$nome] = [PSCustomObject]@{
+                        Texto = "Baixando..."
+                        Tipo  = "andando"
+                    }
+                }
+            }
+            else {
+                $info.Finalizado = $true
+                $downloadsAtivos[$nome] = $info
+
+                if ((Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
+                    $statusApps[$nome] = [PSCustomObject]@{
+                        Texto = "Concluido [OK]"
+                        Tipo  = "ok"
+                    }
+                    $geral.Text = "$nome concluido."
+                }
+                else {
+                    $statusApps[$nome] = [PSCustomObject]@{
+                        Texto = "Erro [X]"
+                        Tipo  = "erro"
+                    }
+                    $geral.Text = "Falha em $nome."
+                }
+            }
+        }
+
+        if ($info.Finalizado -and (Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
+            $concluidos++
+        }
+    }
+
+    if ($ativos -gt 0) {
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+    }
+    else {
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+
+        if ($total -gt 0) {
+            $progress.Value = [math]::Min([int](($concluidos / $total) * 100), 100)
+        }
+        else {
+            $progress.Value = 0
+        }
+    }
+
+    foreach ($categoria in $categoryViews.Keys) {
+        AtualizarDetalhesCategoria $categoria
+    }
+})
+
+$timer.Start()
+
+# =========================
+# INICIALIZACAO
+# =========================
+foreach ($categoria in $categoryViews.Keys) {
+    AtualizarDetalhesCategoria $categoria
+}
 
 [void]$form.ShowDialog()
