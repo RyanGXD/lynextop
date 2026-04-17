@@ -1,6 +1,7 @@
 # ============================================
 # LYNEXT - PerformanceApp.ps1
-# Versao corrigida e mais estavel
+# Tema verde / revisado / mais estavel
+# Created by Ryan
 # ============================================
 
 $Host.UI.RawUI.WindowTitle = "Lynext - Performance App"
@@ -9,20 +10,33 @@ $Host.UI.RawUI.WindowTitle = "Lynext - Performance App"
 # PATHS
 # ============================================
 
-$global:LynextRoot = Join-Path $env:ProgramData "Lynext"
-$global:BackupFile = Join-Path $global:LynextRoot "performance_backup.json"
+$global:LynextRoot   = Join-Path $env:ProgramData "Lynext"
+$global:BackupFile   = Join-Path $global:LynextRoot "performance_backup.json"
+$global:LogFile      = Join-Path $global:LynextRoot "performance_log.txt"
 
 if (-not (Test-Path $global:LynextRoot)) {
     New-Item -Path $global:LynextRoot -ItemType Directory -Force | Out-Null
 }
 
 # ============================================
-# UI
+# UI / TEMA
 # ============================================
+
+$global:ColorMain   = "Green"
+$global:ColorSoft   = "DarkGreen"
+$global:ColorTitle  = "Cyan"
+$global:ColorInfo   = "Green"
+$global:ColorWarn   = "Yellow"
+$global:ColorError  = "Red"
+$global:ColorOk     = "Green"
 
 function Pause-Lynext {
     Write-Host ""
     Read-Host "Pressione ENTER para continuar" | Out-Null
+}
+
+function Show-Line {
+    Write-Host "====================================================================" -ForegroundColor $global:ColorSoft
 }
 
 function Show-Header {
@@ -31,31 +45,53 @@ function Show-Header {
     )
 
     Clear-Host
-    Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host "                        L Y N E X T" -ForegroundColor Cyan
-    Write-Host "                    $Title" -ForegroundColor Green
-    Write-Host "============================================================" -ForegroundColor Cyan
+    Show-Line
+    Write-Host "                            L Y N E X T" -ForegroundColor $global:ColorTitle
+    Write-Host "                        $Title" -ForegroundColor $global:ColorMain
+    Show-Line
     Write-Host ""
 }
 
 function Write-Ok {
     param([string]$Text)
-    Write-Host "[OK]   $Text" -ForegroundColor Green
+    Write-Host "[OK]   $Text" -ForegroundColor $global:ColorOk
 }
 
 function Write-WarnL {
     param([string]$Text)
-    Write-Host "[WARN] $Text" -ForegroundColor Yellow
+    Write-Host "[WARN] $Text" -ForegroundColor $global:ColorWarn
 }
 
 function Write-ErrL {
     param([string]$Text)
-    Write-Host "[ERRO] $Text" -ForegroundColor Red
+    Write-Host "[ERRO] $Text" -ForegroundColor $global:ColorError
 }
 
 function Write-Info {
     param([string]$Text)
-    Write-Host "[INFO] $Text" -ForegroundColor Cyan
+    Write-Host "[INFO] $Text" -ForegroundColor $global:ColorInfo
+}
+
+function Write-Section {
+    param([string]$Text)
+    Write-Host ""
+    Write-Host ">> $Text" -ForegroundColor $global:ColorTitle
+}
+
+function Show-MenuTitle {
+    param([string]$Text)
+    Write-Host $Text -ForegroundColor $global:ColorTitle
+    Write-Host ""
+}
+
+function Write-LogLine {
+    param([string]$Text)
+
+    try {
+        $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Text
+        Add-Content -Path $global:LogFile -Value $line -Encoding UTF8
+    }
+    catch {}
 }
 
 # ============================================
@@ -87,13 +123,11 @@ function Save-Json {
         [object]$Data
     )
 
-    $Data | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding UTF8
+    $Data | ConvertTo-Json -Depth 12 | Set-Content -Path $Path -Encoding UTF8
 }
 
 function Load-Json {
-    param(
-        [string]$Path
-    )
+    param([string]$Path)
 
     if (Test-Path $Path) {
         try {
@@ -129,7 +163,7 @@ function Set-RegDword {
     param(
         [string]$Path,
         [string]$Name,
-        [int]$Value
+        [UInt32]$Value
     )
 
     try {
@@ -142,10 +176,31 @@ function Set-RegDword {
             New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType DWord -Force | Out-Null
         }
 
+        Write-LogLine "REG SET $Path -> $Name = $Value"
         return $true
     }
     catch {
         Write-ErrL "Falha ao alterar registro: $Path -> $Name"
+        Write-LogLine "REG FAIL $Path -> $Name = $Value"
+        return $false
+    }
+}
+
+function Remove-RegValue {
+    param(
+        [string]$Path,
+        [string]$Name
+    )
+
+    try {
+        if (Test-Path $Path) {
+            Remove-ItemProperty -Path $Path -Name $Name -Force -ErrorAction SilentlyContinue
+            Write-LogLine "REG REMOVE $Path -> $Name"
+        }
+        return $true
+    }
+    catch {
+        Write-ErrL "Falha ao remover registro: $Path -> $Name"
         return $false
     }
 }
@@ -208,18 +263,23 @@ function Show-SystemSummary {
         $gpus = Get-CimInstance Win32_VideoController
         $modernStandby = Test-ModernStandby
         $isLaptop = Get-IsLaptop
+        $plan = Get-ActivePowerSchemeGuid
 
         Write-Host "Windows:         $($os.Caption) build $($os.BuildNumber)"
         Write-Host "CPU:             $($cpu.Name)"
         Write-Host "GPU vendor:      $(Get-GpuVendor)"
         Write-Host "Notebook:        $isLaptop"
         Write-Host "Modern Standby:  $modernStandby"
+        Write-Host "Plano ativo:     $plan"
         Write-Host ""
-        Write-Host "GPUs detectadas:" -ForegroundColor Yellow
 
+        Write-Host "GPUs detectadas:" -ForegroundColor $global:ColorWarn
         foreach ($gpu in $gpus) {
             Write-Host " - $($gpu.Name) | Driver: $($gpu.DriverVersion)"
         }
+
+        Write-Host ""
+        Write-Host "Log atual: $global:LogFile" -ForegroundColor $global:ColorSoft
     }
     catch {
         Write-ErrL "Falha ao coletar informacoes do sistema."
@@ -253,10 +313,14 @@ function Backup-CurrentState {
         GpuVendor = Get-GpuVendor
         IsLaptop = Get-IsLaptop
         Registry = @{
-            AutoGameModeEnabled = Get-RegValue -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled"
-            AppCaptureEnabled   = Get-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled"
-            GameDVR_Enabled     = Get-RegValue -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled"
-            HwSchMode           = Get-RegValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode"
+            AutoGameModeEnabled    = Get-RegValue -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled"
+            AllowAutoGameMode      = Get-RegValue -Path "HKCU:\Software\Microsoft\GameBar" -Name "AllowAutoGameMode"
+            AppCaptureEnabled      = Get-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled"
+            GameDVR_Enabled        = Get-RegValue -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled"
+            HwSchMode              = Get-RegValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode"
+            NetworkThrottlingIndex = Get-RegValue -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex"
+            SystemResponsiveness   = Get-RegValue -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness"
+            PowerThrottlingOff     = Get-RegValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff"
         }
         Nvidia = @{
             DefaultPowerLimit = $null
@@ -279,6 +343,7 @@ function Backup-CurrentState {
 
     Save-Json -Path $global:BackupFile -Data $data
     Write-Ok "Backup salvo em $global:BackupFile"
+    Write-LogLine "Backup salvo"
 }
 
 function Ensure-BackupExists {
@@ -291,7 +356,7 @@ function Ensure-BackupExists {
 # POWERCFG
 # ============================================
 
-function Set-PowerValue {
+function Set-PowerValueSafe {
     param(
         [string]$Subgroup,
         [string]$Setting,
@@ -299,17 +364,30 @@ function Set-PowerValue {
         [int]$DcValue
     )
 
-    powercfg /setacvalueindex scheme_current $Subgroup $Setting $AcValue | Out-Null
-    powercfg /setdcvalueindex scheme_current $Subgroup $Setting $DcValue | Out-Null
-    powercfg /setactive scheme_current | Out-Null
+    $ok = $true
+
+    try { powercfg /setacvalueindex scheme_current $Subgroup $Setting $AcValue | Out-Null } catch { $ok = $false }
+    try { powercfg /setdcvalueindex scheme_current $Subgroup $Setting $DcValue | Out-Null } catch { $ok = $false }
+    try { powercfg /setactive scheme_current | Out-Null } catch { $ok = $false }
+
+    if ($ok) {
+        Write-Ok "$Setting aplicado (AC=$AcValue / DC=$DcValue)"
+        Write-LogLine "POWER $Setting AC=$AcValue DC=$DcValue"
+    }
+    else {
+        Write-WarnL "$Setting nao suportado ou indisponivel neste sistema."
+        Write-LogLine "POWER SKIP $Setting"
+    }
 }
 
 function Set-BalancedPlan {
     powercfg /setactive SCHEME_BALANCED | Out-Null
+    Write-LogLine "Plano Balanceado ativado"
 }
 
 function Set-HighPerformancePlan {
     powercfg /setactive SCHEME_MIN | Out-Null
+    Write-LogLine "Plano Alto Desempenho ativado"
 }
 
 function Try-UltimatePerformance {
@@ -319,11 +397,46 @@ function Try-UltimatePerformance {
 
         if ($result -match '([a-fA-F0-9-]{36})') {
             $newGuid = $Matches[1]
+            powercfg /changename $newGuid "Lynext Ultra Performance" | Out-Null
             powercfg /setactive $newGuid | Out-Null
+            Write-LogLine "Plano Lynext Ultra Performance criado/ativado"
             return $true
         }
     }
     catch {}
+
+    return $false
+}
+
+function Ensure-LitePlan {
+    try {
+        $list = powercfg /list | Out-String
+        $match = [regex]::Match($list, '([a-fA-F0-9-]{36}).*Lynext Lite')
+
+        if ($match.Success) {
+            return $match.Groups[1].Value
+        }
+
+        $dup = powercfg -duplicatescheme SCHEME_BALANCED 2>&1 | Out-String
+        if ($dup -match '([a-fA-F0-9-]{36})') {
+            $guid = $Matches[1]
+            powercfg /changename $guid "Lynext Lite" | Out-Null
+            Write-LogLine "Plano Lynext Lite criado"
+            return $guid
+        }
+    }
+    catch {}
+
+    return $null
+}
+
+function Activate-LitePlan {
+    $guid = Ensure-LitePlan
+    if ($guid) {
+        powercfg /setactive $guid | Out-Null
+        Write-LogLine "Plano Lynext Lite ativado"
+        return $true
+    }
 
     return $false
 }
@@ -333,7 +446,9 @@ function Try-UltimatePerformance {
 # ============================================
 
 function Apply-CPUUltra {
-    Show-Header "CPU - ULTRA PERFORMANCE"
+    param([switch]$Silent)
+
+    if (-not $Silent) { Show-Header "CPU - ULTRA PERFORMANCE" }
     Ensure-BackupExists
 
     $modern = Test-ModernStandby
@@ -346,7 +461,7 @@ function Apply-CPUUltra {
     else {
         $ok = Try-UltimatePerformance
         if ($ok) {
-            Write-Ok "Ultimate Performance ativado."
+            Write-Ok "Ultimate/Lynext Ultra ativado."
         }
         else {
             Set-HighPerformancePlan
@@ -354,22 +469,25 @@ function Apply-CPUUltra {
         }
     }
 
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFEPP" -AcValue 0 -DcValue 15
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFBOOSTMODE" -AcValue 2 -DcValue 1
-    Set-PowerValue -Subgroup "sub_processor" -Setting "CPMINCORES" -AcValue 100 -DcValue 50
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFAUTONOMOUSMODE" -AcValue 1 -DcValue 1
-
-    Write-Ok "Preset CPU Ultra aplicado."
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PROCTHROTTLEMIN"    -AcValue 100 -DcValue 50
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PROCTHROTTLEMAX"    -AcValue 100 -DcValue 100
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFEPP"            -AcValue 0   -DcValue 15
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFBOOSTMODE"      -AcValue 2   -DcValue 1
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "CPMINCORES"         -AcValue 100 -DcValue 50
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFAUTONOMOUSMODE" -AcValue 1   -DcValue 1
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "SYSCOOLPOL"         -AcValue 1   -DcValue 1
 
     if ($isLaptop) {
         Write-WarnL "Notebook detectado. Esse modo pode esquentar mais."
     }
 
-    Pause-Lynext
+    if (-not $Silent) { Pause-Lynext }
 }
 
-function Apply-CPUPerformance {
-    Show-Header "CPU - PERFORMANCE"
+function Apply-CPULite {
+    param([switch]$Silent)
+
+    if (-not $Silent) { Show-Header "CPU - LYNEXT LITE" }
     Ensure-BackupExists
 
     $modern = Test-ModernStandby
@@ -380,17 +498,25 @@ function Apply-CPUPerformance {
         Write-Ok "Balanced mantido por compatibilidade."
     }
     else {
-        Set-HighPerformancePlan
-        Write-Ok "High Performance ativado."
+        $liteOk = Activate-LitePlan
+        if ($liteOk) {
+            Write-Ok "Plano Lynext Lite ativado."
+        }
+        else {
+            Set-BalancedPlan
+            Write-WarnL "Nao consegui ativar Lynext Lite. Usando Balanced."
+        }
     }
 
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFEPP" -AcValue 25 -DcValue 40
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFBOOSTMODE" -AcValue 4 -DcValue 3
-    Set-PowerValue -Subgroup "sub_processor" -Setting "CPMINCORES" -AcValue 100 -DcValue 25
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFAUTONOMOUSMODE" -AcValue 1 -DcValue 1
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PROCTHROTTLEMIN"    -AcValue 5   -DcValue 5
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PROCTHROTTLEMAX"    -AcValue 100 -DcValue 100
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFEPP"            -AcValue 25  -DcValue 40
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFBOOSTMODE"      -AcValue 1   -DcValue 1
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "CPMINCORES"         -AcValue 50  -DcValue 25
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFAUTONOMOUSMODE" -AcValue 1   -DcValue 1
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "SYSCOOLPOL"         -AcValue 1   -DcValue 1
 
-    Write-Ok "Preset CPU Performance aplicado."
-    Pause-Lynext
+    if (-not $Silent) { Pause-Lynext }
 }
 
 function Apply-CPUThermal {
@@ -398,23 +524,13 @@ function Apply-CPUThermal {
     Ensure-BackupExists
 
     Set-BalancedPlan
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFEPP" -AcValue 60 -DcValue 80
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFBOOSTMODE" -AcValue 0 -DcValue 0
-    Set-PowerValue -Subgroup "sub_processor" -Setting "CPMINCORES" -AcValue 25 -DcValue 10
-    Set-PowerValue -Subgroup "sub_processor" -Setting "PERFAUTONOMOUSMODE" -AcValue 1 -DcValue 1
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PROCTHROTTLEMIN"    -AcValue 5  -DcValue 5
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PROCTHROTTLEMAX"    -AcValue 99 -DcValue 99
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFEPP"            -AcValue 60 -DcValue 80
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFBOOSTMODE"      -AcValue 0  -DcValue 0
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "CPMINCORES"         -AcValue 25 -DcValue 10
+    Set-PowerValueSafe -Subgroup "sub_processor" -Setting "PERFAUTONOMOUSMODE" -AcValue 1  -DcValue 1
 
-    Write-Ok "Preset termico aplicado."
-    Pause-Lynext
-}
-
-function Show-CPUEconomySkeleton {
-    Show-Header "CPU - ECONOMIA (ESQUELETO)"
-    Write-Host "Modo futuro reservado." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "- Plano Balanced"
-    Write-Host "- EPP alto"
-    Write-Host "- Boost mais conservador"
-    Write-Host "- Core Parking mais agressivo"
     Pause-Lynext
 }
 
@@ -427,9 +543,11 @@ function Set-GameMode {
 
     if ($Mode -eq "On") {
         Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value 1 | Out-Null
+        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AllowAutoGameMode"  -Value 1 | Out-Null
     }
     else {
         Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value 0 | Out-Null
+        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AllowAutoGameMode"  -Value 0 | Out-Null
     }
 }
 
@@ -452,39 +570,69 @@ function Set-Hags {
     if ($Mode -eq "On") {
         Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 2 | Out-Null
     }
-    else {
+    elseif ($Mode -eq "Off") {
         Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 1 | Out-Null
     }
+    else {
+        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 0 | Out-Null
+    }
+}
 
-    Write-WarnL "Mudanca em HAGS pode exigir reinicializacao."
+function Set-PerfRegistryUltra {
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Value 0xffffffff | Out-Null
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Value 10 | Out-Null
+    Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff" -Value 1 | Out-Null
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" -Name "GPU Priority" -Value 8 | Out-Null
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" -Name "Priority" -Value 6 | Out-Null
+}
+
+function Set-PerfRegistryLite {
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Value 10 | Out-Null
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Value 20 | Out-Null
+    Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff" -Value 1 | Out-Null
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" -Name "GPU Priority" -Value 8 | Out-Null
+    Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" -Name "Priority" -Value 6 | Out-Null
 }
 
 function Apply-WindowsUltra {
-    Show-Header "WINDOWS - ULTRA PERFORMANCE"
+    param([switch]$Silent)
+
+    if (-not $Silent) { Show-Header "WINDOWS - ULTRA PERFORMANCE" }
     Ensure-BackupExists
 
     Set-GameMode -Mode "On"
     Set-GameDVR -Mode "Off"
     Set-Hags -Mode "On"
+    Set-PerfRegistryUltra
 
     Write-Ok "Game Mode ON"
     Write-Ok "Game DVR OFF"
     Write-Ok "HAGS ON"
-    Write-WarnL "Visual Effects nao foram forçados por script."
-    Pause-Lynext
+    Write-Ok "Tweaks de latencia aplicados"
+
+    if (-not $Silent) {
+        Write-WarnL "Visual effects e VBS ficaram manuais por seguranca."
+        Pause-Lynext
+    }
 }
 
-function Apply-WindowsPerformance {
-    Show-Header "WINDOWS - PERFORMANCE"
+function Apply-WindowsLite {
+    param([switch]$Silent)
+
+    if (-not $Silent) { Show-Header "WINDOWS - LYNEXT LITE" }
     Ensure-BackupExists
 
     Set-GameMode -Mode "On"
     Set-GameDVR -Mode "Off"
+    Set-Hags -Mode "On"
+    Set-PerfRegistryLite
 
     Write-Ok "Game Mode ON"
     Write-Ok "Game DVR OFF"
-    Write-WarnL "HAGS ficou manual nesse preset."
-    Pause-Lynext
+    Write-Ok "HAGS ON"
+    Write-Ok "Tweaks leves aplicados"
+
+    if (-not $Silent) { Pause-Lynext }
 }
 
 function Reset-WindowsFromBackup {
@@ -498,35 +646,49 @@ function Reset-WindowsFromBackup {
     }
 
     if ($null -ne $backup.Registry.AutoGameModeEnabled) {
-        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value ([int]$backup.Registry.AutoGameModeEnabled) | Out-Null
+        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value ([UInt32]$backup.Registry.AutoGameModeEnabled) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.AllowAutoGameMode) {
+        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AllowAutoGameMode" -Value ([UInt32]$backup.Registry.AllowAutoGameMode) | Out-Null
     }
 
     if ($null -ne $backup.Registry.AppCaptureEnabled) {
-        Set-RegDword -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value ([int]$backup.Registry.AppCaptureEnabled) | Out-Null
+        Set-RegDword -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value ([UInt32]$backup.Registry.AppCaptureEnabled) | Out-Null
     }
 
     if ($null -ne $backup.Registry.GameDVR_Enabled) {
-        Set-RegDword -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value ([int]$backup.Registry.GameDVR_Enabled) | Out-Null
+        Set-RegDword -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value ([UInt32]$backup.Registry.GameDVR_Enabled) | Out-Null
     }
 
     if ($null -ne $backup.Registry.HwSchMode) {
-        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value ([int]$backup.Registry.HwSchMode) | Out-Null
+        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value ([UInt32]$backup.Registry.HwSchMode) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.SystemResponsiveness) {
+        Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Value ([UInt32]$backup.Registry.SystemResponsiveness) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.PowerThrottlingOff) {
+        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff" -Value ([UInt32]$backup.Registry.PowerThrottlingOff) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.NetworkThrottlingIndex) {
+        try {
+            $v = [UInt32]$backup.Registry.NetworkThrottlingIndex
+            Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Value $v | Out-Null
+        }
+        catch {
+            Remove-RegValue -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" | Out-Null
+        }
     }
 
     Write-Ok "Windows restaurado pelo backup."
     Pause-Lynext
 }
 
-function Show-HagsHint {
-    Show-Header "HAGS - CAMINHO OFICIAL"
-    Write-Host "Configuracoes > Sistema > Tela > Graficos > Alterar configuracoes graficas padrao"
-    Write-Host ""
-    Write-Host "O script usa registro como fallback."
-    Pause-Lynext
-}
-
 # ============================================
-# REDE
+# REDE / NIC
 # ============================================
 
 function Get-ActiveNics {
@@ -691,6 +853,7 @@ function Set-NvidiaPowerLimit {
     try {
         & $nvidiaSmi -pl $Watts | Out-Null
         Write-Ok "Power limit ajustado para $Watts W"
+        Write-LogLine "NVIDIA power limit = $Watts W"
     }
     catch {
         Write-ErrL "Falha ao ajustar power limit."
@@ -707,6 +870,7 @@ function Reset-NvidiaClocks {
     try {
         & $nvidiaSmi -rgc | Out-Null
         Write-Ok "Clocks resetados."
+        Write-LogLine "NVIDIA clocks resetados"
     }
     catch {
         Write-WarnL "Sua GPU/driver pode nao suportar reset de clocks por nvidia-smi."
@@ -730,6 +894,7 @@ function Lock-NvidiaClocks {
         try {
             & $nvidiaSmi -lgc "$min,$max" | Out-Null
             Write-Ok "Clocks travados em $min,$max"
+            Write-LogLine "NVIDIA clocks travados $min,$max"
         }
         catch {
             Write-ErrL "Falha ao travar clocks."
@@ -743,53 +908,82 @@ function Lock-NvidiaClocks {
 }
 
 function Apply-NvidiaUltra {
-    Show-Header "NVIDIA - ULTRA PERFORMANCE"
+    param([switch]$Silent)
+
+    if (-not $Silent) { Show-Header "NVIDIA - ULTRA PERFORMANCE" }
     Ensure-BackupExists
 
     if ((Get-GpuVendor) -ne "NVIDIA") {
         Write-WarnL "GPU NVIDIA nao detectada."
-        Pause-Lynext
+        if (-not $Silent) { Pause-Lynext }
         return
     }
 
-    Write-Host "Politica recomendada:" -ForegroundColor Yellow
+    Write-Section "Politica sugerida"
     Write-Host "- Prefer maximum performance"
-    Write-Host "- ULLM Ultra somente se o jogo NAO tiver Reflex"
+    Write-Host "- Low Latency Ultra somente se o jogo NAO tiver Reflex"
+    Write-Host "- Highest refresh rate"
     Write-Host "- Texture filtering: High performance"
-    Write-Host "- Shader cache grande"
-    Write-Host "- DLSS ON / RT baixo ou OFF"
-    Write-Host ""
+    Write-Host "- DLSS ON quando fizer sentido"
 
-    $resp = Read-Host "Deseja aplicar power limit manual? (s/n)"
-    if ($resp -match '^(s|S)$') {
-        $watts = Read-Host "Digite o valor em Watts"
-        if ($watts -match '^\d+(\.\d+)?$') {
-            Set-NvidiaPowerLimit -Watts ([double]$watts)
+    $nvidiaSmi = Get-NvidiaSmiPath
+    if ($nvidiaSmi) {
+        try {
+            $limits = & $nvidiaSmi --query-gpu=power.min_limit,power.max_limit,power.default_limit --format=csv,noheader,nounits 2>$null
+            if ($limits) {
+                $parts = ($limits | Select-Object -First 1).ToString().Split(",") | ForEach-Object { $_.Trim() }
+                if ($parts.Count -ge 2) {
+                    $max = [double]$parts[1]
+                    Set-NvidiaPowerLimit -Watts $max
+                }
+            }
         }
-        else {
-            Write-WarnL "Valor invalido."
+        catch {
+            Write-WarnL "Nao consegui puxar limites de energia automaticamente."
         }
     }
+    else {
+        Write-WarnL "nvidia-smi nao encontrado. Sem power limit automatico."
+    }
 
-    Pause-Lynext
+    if (-not $Silent) { Pause-Lynext }
 }
 
-function Apply-NvidiaPerformance {
-    Show-Header "NVIDIA - PERFORMANCE"
+function Apply-NvidiaLite {
+    param([switch]$Silent)
+
+    if (-not $Silent) { Show-Header "NVIDIA - LYNEXT LITE" }
+    Ensure-BackupExists
 
     if ((Get-GpuVendor) -ne "NVIDIA") {
         Write-WarnL "GPU NVIDIA nao detectada."
-        Pause-Lynext
+        if (-not $Silent) { Pause-Lynext }
         return
     }
 
-    Write-Host "Politica recomendada:" -ForegroundColor Yellow
-    Write-Host "- Adaptive / Driver controlled"
-    Write-Host "- ULLM On, ou Off se houver Reflex"
-    Write-Host "- Texture filtering: Performance"
-    Write-Host "- DLSS Balanced/Quality"
-    Write-Host "- RT moderado"
-    Pause-Lynext
+    Write-Section "Politica sugerida"
+    Write-Host "- Optimal / Driver controlled"
+    Write-Host "- Low Latency ON"
+    Write-Host "- Highest refresh rate"
+    Write-Host "- Sem forcar clocks agressivos"
+
+    $nvidiaSmi = Get-NvidiaSmiPath
+    if ($nvidiaSmi) {
+        try {
+            $defaults = Load-Json -Path $global:BackupFile
+            if ($defaults -and $defaults.Nvidia.DefaultPowerLimit) {
+                Set-NvidiaPowerLimit -Watts ([double]$defaults.Nvidia.DefaultPowerLimit)
+            }
+            else {
+                Write-WarnL "Sem power limit padrao salvo."
+            }
+        }
+        catch {
+            Write-WarnL "Nao consegui restaurar o power limit salvo."
+        }
+    }
+
+    if (-not $Silent) { Pause-Lynext }
 }
 
 function Reset-NvidiaFromBackup {
@@ -816,11 +1010,11 @@ function Reset-NvidiaFromBackup {
 }
 
 # ============================================
-# AMD
+# AMD / INTEL
 # ============================================
 
-function Apply-AmdUltra {
-    Show-Header "AMD - ULTRA PERFORMANCE"
+function Show-AmdInfo {
+    Show-Header "AMD - INFORMACOES"
 
     if ((Get-GpuVendor) -ne "AMD") {
         Write-WarnL "GPU AMD nao detectada."
@@ -828,58 +1022,109 @@ function Apply-AmdUltra {
         return
     }
 
-    Write-Host "Politica recomendada AMD:" -ForegroundColor Yellow
-    Write-Host "- Anti-Lag ON"
-    Write-Host "- Chill OFF"
-    Write-Host "- Boost ON"
-    Write-Host "- Image Sharpening ON moderado"
-    Write-Host "- Tessellation override reduzido"
-    Write-Host "- Enhanced Sync somente se nao houver problemas"
-    Write-Host "- RSR/FSR quando fizer sentido"
+    try {
+        Get-CimInstance Win32_VideoController |
+            Where-Object { $_.Name -match "AMD|Radeon" } |
+            Select-Object Name, DriverVersion, VideoProcessor |
+            Format-List
+    }
+    catch {
+        Write-ErrL "Falha ao coletar informacoes AMD."
+    }
+
+    Pause-Lynext
+}
+
+function Show-IntelInfo {
+    Show-Header "INTEL - INFORMACOES"
+
+    if ((Get-GpuVendor) -ne "Intel") {
+        Write-WarnL "GPU Intel nao detectada."
+        Pause-Lynext
+        return
+    }
+
+    try {
+        Get-CimInstance Win32_VideoController |
+            Where-Object { $_.Name -match "Intel" } |
+            Select-Object Name, DriverVersion, VideoProcessor |
+            Format-List
+    }
+    catch {
+        Write-ErrL "Falha ao coletar informacoes Intel."
+    }
+
+    Pause-Lynext
+}
+
+# ============================================
+# FULL MODES
+# ============================================
+
+function Confirm-AggressiveMode {
+    Show-Header "CONFIRMACAO - ULTRA"
+    Write-WarnL "O modo Ultra e agressivo."
+    Write-WarnL "Pode aumentar temperatura, consumo e ruido."
     Write-Host ""
-    Write-WarnL "Automacao real da AMD idealmente deve usar helper com ADLX."
-    Pause-Lynext
+    $confirm = Read-Host "Digite SIM para continuar"
+    return ($confirm -eq "SIM")
 }
 
-function Apply-AmdPerformance {
-    Show-Header "AMD - PERFORMANCE"
-
-    if ((Get-GpuVendor) -ne "AMD") {
-        Write-WarnL "GPU AMD nao detectada."
-        Pause-Lynext
+function Apply-LynextUltraFull {
+    if (-not (Confirm-AggressiveMode)) {
         return
     }
 
-    Write-Host "Politica recomendada AMD:" -ForegroundColor Yellow
-    Write-Host "- Anti-Lag ON"
-    Write-Host "- Chill OFF"
-    Write-Host "- Boost moderado ou OFF"
-    Write-Host "- Image Sharpening leve/moderado"
-    Write-Host "- Tessellation leve"
-    Pause-Lynext
-}
+    Show-Header "LYNEXT ULTRA PERFORMANCE"
+    Backup-CurrentState
 
-function Reset-AmdPolicy {
-    Show-Header "AMD - RESET"
+    Write-Section "CPU"
+    Apply-CPUUltra -Silent
 
-    if ((Get-GpuVendor) -ne "AMD") {
-        Write-WarnL "GPU AMD nao detectada."
-        Pause-Lynext
-        return
+    Write-Section "WINDOWS"
+    Apply-WindowsUltra -Silent
+
+    if ((Get-GpuVendor) -eq "NVIDIA") {
+        Write-Section "NVIDIA"
+        Apply-NvidiaUltra -Silent
+    }
+    else {
+        Write-Section "GPU"
+        Write-WarnL "Ajuste automatico agressivo de GPU foi mantido focado em NVIDIA por enquanto."
     }
 
-    Write-Host "Reset recomendado AMD:" -ForegroundColor Yellow
-    Write-Host "- Voltar os toggles no Adrenalin"
-    Write-Host "- Se necessario, reinstalar driver limpo"
+    Write-Section "FINAL"
+    Write-Ok "Lynext Ultra Performance concluido."
+    Write-WarnL "Reinicie o PC se quiser aplicar tudo de forma mais limpa, especialmente HAGS."
     Pause-Lynext
 }
 
-# ============================================
-# GLOBAL RESET
-# ============================================
+function Apply-LynextLiteFull {
+    Show-Header "LYNEXT LITE"
+    Backup-CurrentState
+
+    Write-Section "CPU"
+    Apply-CPULite -Silent
+
+    Write-Section "WINDOWS"
+    Apply-WindowsLite -Silent
+
+    if ((Get-GpuVendor) -eq "NVIDIA") {
+        Write-Section "NVIDIA"
+        Apply-NvidiaLite -Silent
+    }
+    else {
+        Write-Section "GPU"
+        Write-Info "Modo Lite aplicado no sistema. GPU fica mais guiada/manual fora de NVIDIA por enquanto."
+    }
+
+    Write-Section "FINAL"
+    Write-Ok "Lynext Lite concluido."
+    Pause-Lynext
+}
 
 function Reset-AllFromBackup {
-    Show-Header "RESET GLOBAL"
+    Show-Header "RESET GERAL"
 
     $backup = Load-Json -Path $global:BackupFile
     if (-not $backup) {
@@ -893,163 +1138,158 @@ function Reset-AllFromBackup {
             powercfg /setactive $backup.PowerSchemeGuid | Out-Null
             Write-Ok "Plano de energia restaurado."
         }
+        else {
+            Set-BalancedPlan
+            Write-WarnL "GUID do plano nao encontrado. Voltando para Balanced."
+        }
     }
     catch {
-        Write-ErrL "Falha ao restaurar plano de energia."
+        Set-BalancedPlan
+        Write-WarnL "Falha ao restaurar GUID exato. Voltando para Balanced."
     }
 
-    if ($null -ne $backup.Registry.AutoGameModeEnabled) {
-        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value ([int]$backup.Registry.AutoGameModeEnabled) | Out-Null
-    }
-
-    if ($null -ne $backup.Registry.AppCaptureEnabled) {
-        Set-RegDword -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value ([int]$backup.Registry.AppCaptureEnabled) | Out-Null
-    }
-
-    if ($null -ne $backup.Registry.GameDVR_Enabled) {
-        Set-RegDword -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value ([int]$backup.Registry.GameDVR_Enabled) | Out-Null
-    }
-
-    if ($null -ne $backup.Registry.HwSchMode) {
-        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value ([int]$backup.Registry.HwSchMode) | Out-Null
-    }
+    $oldPause = $global:BackupPauseHack
+    $global:BackupPauseHack = $true
+    Reset-WindowsFromBackup
+    $global:BackupPauseHack = $oldPause
 
     if ((Get-GpuVendor) -eq "NVIDIA") {
+        $backupNv = Load-Json -Path $global:BackupFile
         Reset-NvidiaClocks
-
-        if ($backup.Nvidia -and $backup.Nvidia.DefaultPowerLimit) {
-            Set-NvidiaPowerLimit -Watts ([double]$backup.Nvidia.DefaultPowerLimit)
+        if ($backupNv -and $backupNv.Nvidia -and $backupNv.Nvidia.DefaultPowerLimit) {
+            Set-NvidiaPowerLimit -Watts ([double]$backupNv.Nvidia.DefaultPowerLimit)
         }
     }
 
-    Write-Ok "Rollback global aplicado."
+    Write-Ok "Reset geral concluido."
     Write-WarnL "Reinicie o PC se voce mexeu em HAGS."
     Pause-Lynext
+}
+
+# Evita pausa dupla no Reset-WindowsFromBackup quando chamado por Reset-AllFromBackup
+Set-Item -Path Function:\Reset-WindowsFromBackup -Value {
+    Show-Header "WINDOWS - RESET"
+    $backup = Load-Json -Path $global:BackupFile
+
+    if (-not $backup) {
+        Write-ErrL "Backup nao encontrado."
+        if (-not $global:BackupPauseHack) { Pause-Lynext }
+        return
+    }
+
+    if ($null -ne $backup.Registry.AutoGameModeEnabled) {
+        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value ([UInt32]$backup.Registry.AutoGameModeEnabled) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.AllowAutoGameMode) {
+        Set-RegDword -Path "HKCU:\Software\Microsoft\GameBar" -Name "AllowAutoGameMode" -Value ([UInt32]$backup.Registry.AllowAutoGameMode) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.AppCaptureEnabled) {
+        Set-RegDword -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value ([UInt32]$backup.Registry.AppCaptureEnabled) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.GameDVR_Enabled) {
+        Set-RegDword -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value ([UInt32]$backup.Registry.GameDVR_Enabled) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.HwSchMode) {
+        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value ([UInt32]$backup.Registry.HwSchMode) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.SystemResponsiveness) {
+        Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Value ([UInt32]$backup.Registry.SystemResponsiveness) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.PowerThrottlingOff) {
+        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff" -Value ([UInt32]$backup.Registry.PowerThrottlingOff) | Out-Null
+    }
+
+    if ($null -ne $backup.Registry.NetworkThrottlingIndex) {
+        try {
+            $v = [UInt32]$backup.Registry.NetworkThrottlingIndex
+            Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Value $v | Out-Null
+        }
+        catch {
+            Remove-RegValue -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" | Out-Null
+        }
+    }
+
+    Write-Ok "Windows restaurado pelo backup."
+    if (-not $global:BackupPauseHack) { Pause-Lynext }
 }
 
 # ============================================
 # MENUS
 # ============================================
 
-function Show-CPUMenu {
+function Menu-CPU {
     do {
         Show-Header "CPU / ENERGIA"
-        Write-Host "[1] Ultra Performance"
-        Write-Host "[2] Performance"
+        Write-Host "[1] Lynext Ultra Performance"
+        Write-Host "[2] Lynext Lite"
         Write-Host "[3] Termico / Quieto"
-        Write-Host "[4] Economia (esqueleto)"
         Write-Host "[0] Voltar"
         Write-Host ""
 
-        $opt = Read-Host "Escolha"
+        $choice = Read-Host "Escolha"
 
-        switch ($opt) {
+        switch ($choice) {
             "1" { Apply-CPUUltra }
-            "2" { Apply-CPUPerformance }
+            "2" { Apply-CPULite }
             "3" { Apply-CPUThermal }
-            "4" { Show-CPUEconomySkeleton }
-            "0" { break }
+            "0" { return }
             default {
                 Write-WarnL "Opcao invalida."
-                Start-Sleep -Milliseconds 600
+                Pause-Lynext
             }
         }
     } while ($true)
 }
 
-function Show-NvidiaMenu {
-    do {
-        Show-Header "NVIDIA"
-        Write-Host "[1] Ultra Performance"
-        Write-Host "[2] Performance"
-        Write-Host "[3] Reset"
-        Write-Host "[4] Consultar suporte / clocks / power"
-        Write-Host "[5] Lock clocks manual"
-        Write-Host "[0] Voltar"
-        Write-Host ""
-
-        $opt = Read-Host "Escolha"
-
-        switch ($opt) {
-            "1" { Apply-NvidiaUltra }
-            "2" { Apply-NvidiaPerformance }
-            "3" { Reset-NvidiaFromBackup }
-            "4" { Show-NvidiaSupportInfo }
-            "5" { Lock-NvidiaClocks }
-            "0" { break }
-            default {
-                Write-WarnL "Opcao invalida."
-                Start-Sleep -Milliseconds 600
-            }
-        }
-    } while ($true)
-}
-
-function Show-AmdMenu {
-    do {
-        Show-Header "AMD"
-        Write-Host "[1] Ultra Performance"
-        Write-Host "[2] Performance"
-        Write-Host "[3] Reset"
-        Write-Host "[0] Voltar"
-        Write-Host ""
-
-        $opt = Read-Host "Escolha"
-
-        switch ($opt) {
-            "1" { Apply-AmdUltra }
-            "2" { Apply-AmdPerformance }
-            "3" { Reset-AmdPolicy }
-            "0" { break }
-            default {
-                Write-WarnL "Opcao invalida."
-                Start-Sleep -Milliseconds 600
-            }
-        }
-    } while ($true)
-}
-
-function Show-WindowsMenu {
+function Menu-Windows {
     do {
         Show-Header "WINDOWS / JOGOS"
-        Write-Host "[1] Ultra Performance"
-        Write-Host "[2] Performance"
+        Write-Host "[1] Windows Ultra"
+        Write-Host "[2] Windows Lite"
         Write-Host "[3] Reset pelo backup"
         Write-Host "[4] HAGS ON"
         Write-Host "[5] HAGS OFF"
-        Write-Host "[6] Caminho oficial HAGS"
         Write-Host "[0] Voltar"
         Write-Host ""
 
-        $opt = Read-Host "Escolha"
+        $choice = Read-Host "Escolha"
 
-        switch ($opt) {
+        switch ($choice) {
             "1" { Apply-WindowsUltra }
-            "2" { Apply-WindowsPerformance }
+            "2" { Apply-WindowsLite }
             "3" { Reset-WindowsFromBackup }
             "4" {
-                Ensure-BackupExists
                 Show-Header "HAGS ON"
+                Ensure-BackupExists
                 Set-Hags -Mode "On"
+                Write-Ok "HAGS ON aplicado."
+                Write-WarnL "Pode exigir reinicio."
                 Pause-Lynext
             }
             "5" {
-                Ensure-BackupExists
                 Show-Header "HAGS OFF"
+                Ensure-BackupExists
                 Set-Hags -Mode "Off"
+                Write-Ok "HAGS OFF aplicado."
+                Write-WarnL "Pode exigir reinicio."
                 Pause-Lynext
             }
-            "6" { Show-HagsHint }
-            "0" { break }
+            "0" { return }
             default {
                 Write-WarnL "Opcao invalida."
-                Start-Sleep -Milliseconds 600
+                Pause-Lynext
             }
         }
     } while ($true)
 }
 
-function Show-NetworkMenu {
+function Menu-Network {
     do {
         Show-Header "REDE / LATENCIA"
         Write-Host "[1] RSS ON"
@@ -1060,87 +1300,125 @@ function Show-NetworkMenu {
         Write-Host "[0] Voltar"
         Write-Host ""
 
-        $opt = Read-Host "Escolha"
+        $choice = Read-Host "Escolha"
 
-        switch ($opt) {
+        switch ($choice) {
             "1" { Enable-RSS }
             "2" { Disable-InterruptModeration }
             "3" { Reset-InterruptModeration }
             "4" { Disable-LSO }
             "5" { Enable-LSO }
-            "0" { break }
+            "0" { return }
             default {
                 Write-WarnL "Opcao invalida."
-                Start-Sleep -Milliseconds 600
+                Pause-Lynext
             }
         }
     } while ($true)
 }
 
-function Show-BackupMenu {
+function Menu-Nvidia {
     do {
-        Show-Header "BACKUP / RESET"
-        Write-Host "[1] Criar / atualizar backup"
-        Write-Host "[2] Mostrar caminho do backup"
-        Write-Host "[3] Reset global pelo backup"
+        Show-Header "NVIDIA"
+        Write-Host "[1] Mostrar suporte / estado"
+        Write-Host "[2] Ultra Performance"
+        Write-Host "[3] Lynext Lite"
+        Write-Host "[4] Travar clocks manualmente"
+        Write-Host "[5] Reset NVIDIA"
         Write-Host "[0] Voltar"
-        Write-Host ""
-
-        $opt = Read-Host "Escolha"
-
-        switch ($opt) {
-            "1" {
-                Backup-CurrentState
-                Pause-Lynext
-            }
-            "2" {
-                Write-Host $global:BackupFile -ForegroundColor Yellow
-                Pause-Lynext
-            }
-            "3" {
-                Reset-AllFromBackup
-            }
-            "0" { break }
-            default {
-                Write-WarnL "Opcao invalida."
-                Start-Sleep -Milliseconds 600
-            }
-        }
-    } while ($true)
-}
-
-function Start-PerformanceApp {
-    Ensure-Admin
-
-    do {
-        Show-Header "PERFORMANCE APP"
-        Write-Host "[1] Resumo do Sistema"
-        Write-Host "[2] CPU / Energia"
-        Write-Host "[3] NVIDIA"
-        Write-Host "[4] AMD"
-        Write-Host "[5] Windows / Jogos"
-        Write-Host "[6] Rede / Latencia"
-        Write-Host "[7] Backup / Reset"
-        Write-Host "[0] Sair"
         Write-Host ""
 
         $choice = Read-Host "Escolha"
 
         switch ($choice) {
-            "1" { Show-SystemSummary }
-            "2" { Show-CPUMenu }
-            "3" { Show-NvidiaMenu }
-            "4" { Show-AmdMenu }
-            "5" { Show-WindowsMenu }
-            "6" { Show-NetworkMenu }
-            "7" { Show-BackupMenu }
-            "0" { break }
+            "1" { Show-NvidiaSupportInfo }
+            "2" { Apply-NvidiaUltra }
+            "3" { Apply-NvidiaLite }
+            "4" { Lock-NvidiaClocks }
+            "5" { Reset-NvidiaFromBackup }
+            "0" { return }
             default {
                 Write-WarnL "Opcao invalida."
-                Start-Sleep -Milliseconds 600
+                Pause-Lynext
             }
         }
     } while ($true)
 }
 
-Start-PerformanceApp
+function Menu-Backup {
+    do {
+        Show-Header "BACKUP / RESET"
+        Write-Host "[1] Criar / atualizar backup"
+        Write-Host "[2] Mostrar caminho do backup"
+        Write-Host "[3] Reset geral pelo backup"
+        Write-Host "[0] Voltar"
+        Write-Host ""
+
+        $choice = Read-Host "Escolha"
+
+        switch ($choice) {
+            "1" {
+                Show-Header "BACKUP"
+                Backup-CurrentState
+                Pause-Lynext
+            }
+            "2" {
+                Show-Header "CAMINHOS"
+                Write-Host "Backup: $global:BackupFile" -ForegroundColor $global:ColorWarn
+                Write-Host "Log:    $global:LogFile" -ForegroundColor $global:ColorWarn
+                Pause-Lynext
+            }
+            "3" { Reset-AllFromBackup }
+            "0" { return }
+            default {
+                Write-WarnL "Opcao invalida."
+                Pause-Lynext
+            }
+        }
+    } while ($true)
+}
+
+function Menu-Main {
+    do {
+        Show-Header "PERFORMANCE APP"
+        Write-Host "[1] Aplicar Lynext Ultra Performance"
+        Write-Host "[2] Aplicar Lynext Lite"
+        Write-Host "[3] CPU / Energia"
+        Write-Host "[4] Windows / Jogos"
+        Write-Host "[5] Rede / Latencia"
+        Write-Host "[6] NVIDIA"
+        Write-Host "[7] AMD"
+        Write-Host "[8] Intel"
+        Write-Host "[9] Resumo do sistema"
+        Write-Host "[B] Backup / Reset"
+        Write-Host "[0] Sair"
+        Write-Host ""
+
+        $choice = Read-Host "Escolha"
+
+        switch ($choice.ToUpper()) {
+            "1" { Apply-LynextUltraFull }
+            "2" { Apply-LynextLiteFull }
+            "3" { Menu-CPU }
+            "4" { Menu-Windows }
+            "5" { Menu-Network }
+            "6" { Menu-Nvidia }
+            "7" { Show-AmdInfo }
+            "8" { Show-IntelInfo }
+            "9" { Show-SystemSummary }
+            "B" { Menu-Backup }
+            "0" { return }
+            default {
+                Write-WarnL "Opcao invalida."
+                Pause-Lynext
+            }
+        }
+    } while ($true)
+}
+
+# ============================================
+# START
+# ============================================
+
+Ensure-Admin
+Menu-Main
