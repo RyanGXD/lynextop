@@ -1,11 +1,18 @@
 $loaderUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main/lynext.ps1"
 $baseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
 $installDir = Join-Path $env:TEMP "Lynext"
+$iconsDir = Join-Path $installDir "icons"
+
 $files = @(
     "MainMenu.ps1",
     "DownloadsApp.ps1",
     "NetworkApp.ps1",
     "PerformanceApp.ps1"
+)
+
+$iconFiles = @(
+    "chrome.png",
+    "nvidia.png"
 )
 
 function Test-LynextAdmin {
@@ -24,13 +31,6 @@ function Start-LynextElevated {
     ) | Out-Null
 }
 
-function Initialize-LynextTls {
-    try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    }
-    catch {}
-}
-
 Write-Host "====================================="
 Write-Host "            LYNEXT LOADER"
 Write-Host "====================================="
@@ -43,10 +43,12 @@ if (-not (Test-LynextAdmin)) {
 }
 
 try {
-    Initialize-LynextTls
-
     if (-not (Test-Path $installDir)) {
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }
+
+    if (-not (Test-Path $iconsDir)) {
+        New-Item -ItemType Directory -Path $iconsDir -Force | Out-Null
     }
 
     foreach ($file in $files) {
@@ -54,7 +56,15 @@ try {
         $dest = Join-Path $installDir $file
 
         Write-Host "Baixando $file..."
-        Invoke-WebRequest -Uri $url -OutFile $dest
+        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+    }
+
+    foreach ($icon in $iconFiles) {
+        $url = "$baseUrl/icons/$icon"
+        $dest = Join-Path $iconsDir $icon
+
+        Write-Host "Baixando icone $icon..."
+        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
     }
 
     $mainMenu = Join-Path $installDir "MainMenu.ps1"
