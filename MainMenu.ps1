@@ -115,6 +115,15 @@ function Criar-Painel {
     return $panel
 }
 
+function Get-LynextPowerShellPath {
+    $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    if (Test-Path $systemPowerShell) {
+        return $systemPowerShell
+    }
+
+    return "powershell.exe"
+}
+
 function Abrir-Modulo {
     param(
         [string]$NomeModulo
@@ -140,7 +149,11 @@ function Abrir-Modulo {
         $script:statusLabel.ForeColor = $accent
         $form.Refresh()
 
-        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$caminho`""
+        Start-Process (Get-LynextPowerShellPath) -ArgumentList @(
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", $caminho
+        ) | Out-Null
         
         Start-Sleep -Milliseconds 200
 
@@ -256,3 +269,4 @@ foreach ($btn in @($btnRede, $btnDesempenho, $btnDownloads, $btnSair)) {
 }
 
 [void]$form.ShowDialog()
+
