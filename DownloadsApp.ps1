@@ -1,229 +1,1014 @@
-$global:LynextPlanName = "Lynext Ultra Performance"
-$global:UltimatePerfGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-function Write-Log {
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+# =========================
+# CONFIG
+# =========================
+$destinoBase = Join-Path $env:USERPROFILE "Downloads\Instaladores"
+$downloadsAtivos = @{}
+$statusApps = @{}
+$categoryViews = @{}
+$repoBaseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
+
+# =========================
+# CORES (DARK + ROXO SUAVE)
+# =========================
+$bgMain      = [System.Drawing.Color]::FromArgb(14,14,18)
+$bgPanel     = [System.Drawing.Color]::FromArgb(22,22,30)
+$bgPanel2    = [System.Drawing.Color]::FromArgb(28,28,38)
+$bgButton    = [System.Drawing.Color]::FromArgb(44,44,58)
+$bgButton2   = [System.Drawing.Color]::FromArgb(60,60,78)
+$bgList      = [System.Drawing.Color]::FromArgb(16,16,22)
+
+$fgMain      = [System.Drawing.Color]::FromArgb(232,232,238)
+$fgSoft      = [System.Drawing.Color]::FromArgb(165,165,182)
+$fgMuted     = [System.Drawing.Color]::FromArgb(128,128,146)
+
+$accent      = [System.Drawing.Color]::FromArgb(132,108,186)
+$accentSoft  = [System.Drawing.Color]::FromArgb(90,76,132)
+
+$okColor     = [System.Drawing.Color]::FromArgb(110,200,140)
+$errColor    = [System.Drawing.Color]::FromArgb(220,100,100)
+$runColor    = [System.Drawing.Color]::FromArgb(220,180,100)
+$manualColor = [System.Drawing.Color]::FromArgb(120,175,235)
+
+$borderColor = [System.Drawing.Color]::FromArgb(72,72,90)
+$tabBackColor = [System.Drawing.Color]::FromArgb(52,52,62)
+
+# =========================
+# BASE DE APPS
+# =========================
+$apps = @(
+    [PSCustomObject]@{
+        Nome = "CapFrameX"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Captura e analisa frametimes, FPS e percentis. Bom para comparar testes e validar se um tweak realmente melhorou o jogo."
+        Metodo = "Pagina"
+        Url = "https://www.capframex.com/download"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "ISLC"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Gerencia a standby list da memoria para reduzir travadas e melhorar a responsividade em jogos e multitarefa."
+        Metodo = "ISLCLatest"
+        Url = "https://www.wagnardsoft.com/intelligent-standby-list-cleaner-islc"
+        Arquivo = "ISLC.exe"
+        Fonte = "Site oficial (ultima versao)"
+    }
+    [PSCustomObject]@{
+        Nome = "MSI Afterburner"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Ferramenta de overclock, undervolt, fan curve e monitoramento da GPU. Ideal para ajuste fino e teste de estabilidade."
+        Metodo = "Pagina"
+        Url = "https://br.msi.com/Landing/afterburner/graphics-cards"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "MSI Utility v3"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Utilitario usado para ajustar politicas MSI e prioridade de interrupcoes em dispositivos PCIe."
+        Metodo = "Direto"
+        Url = "https://raw.githubusercontent.com/Sathango/Msi-Utility-v3/main/Msi%20Utility%20v3.exe"
+        Arquivo = "MsiUtilityV3.exe"
+        Fonte = "GitHub raw"
+    }
+    [PSCustomObject]@{
+        Nome = "NVIDIA Profile Inspector"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Editor avancado dos perfis internos da NVIDIA. Aqui ele baixa a ultima release estavel automaticamente."
+        Metodo = "GitHubLatestZip"
+        Url = "https://api.github.com/repos/Orbmu2k/nvidiaProfileInspector/releases"
+        Arquivo = "NVIDIAProfileInspector.zip"
+        Fonte = "GitHub latest stable"
+    }
+    [PSCustomObject]@{
+        Nome = "Power Settings Explorer"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Mostra e libera opcoes avancadas dos planos de energia do Windows para ajuste fino de desempenho e latencia."
+        Metodo = "Pagina"
+        Url = "https://www.mediafire.com/file/wt37sbsejk7iepm/PowerSettingsExplorer.zip"
+        Arquivo = ""
+        Fonte = "MediaFire"
+    }
+    [PSCustomObject]@{
+        Nome = "Process Lasso"
+        Categoria = "Performance"
+        Tipo = "Manual"
+        Descricao = "Automacao e ajuste de afinidade, prioridade e comportamento de processos para manter o sistema responsivo."
+        Metodo = "Pagina"
+        Url = "https://bitsum.com/download-process-lasso/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "hidusbf"
+        Categoria = "Performance"
+        Tipo = "Automatico"
+        Descricao = "Utilitario para ajuste de polling rate de dispositivos USB/HID. Muito usado para mouse, mas exige cuidado."
+        Metodo = "Direto"
+        Url = "https://raw.githubusercontent.com/LordOfMice/hidusbf/master/hidusbf.zip"
+        Arquivo = "hidusbf.zip"
+        Fonte = "GitHub raw"
+    }
+
+    [PSCustomObject]@{
+        Nome = "CPU-Z"
+        Categoria = "Monitoramento"
+        Tipo = "Manual"
+        Descricao = "Mostra informacoes detalhadas do processador, placa-mae, memoria e clocks em tempo real."
+        Metodo = "Pagina"
+        Url = "https://www.cpuid.com/softwares/cpu-z.html"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "HWiNFO"
+        Categoria = "Monitoramento"
+        Tipo = "Manual"
+        Descricao = "Uma das melhores ferramentas para sensores, temperaturas, consumo, clocks, VRM e diagnostico geral do hardware."
+        Metodo = "Pagina"
+        Url = "https://www.hwinfo.com/download/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "LatencyMon"
+        Categoria = "Monitoramento"
+        Tipo = "Automatico"
+        Descricao = "Analisa DPC, ISR e pagefaults para identificar gargalos de latencia e problemas que causam stutter ou audio drop."
+        Metodo = "Direto"
+        Url = "https://www.resplendence.com/download/LatencyMon.exe"
+        Arquivo = "LatencyMon.exe"
+        Fonte = "Download direto oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "OCCT"
+        Categoria = "Monitoramento"
+        Tipo = "Manual"
+        Descricao = "Ferramenta de stress test e validacao para CPU, GPU, memoria, VRAM e fonte. Boa para estabilidade."
+        Metodo = "Pagina"
+        Url = "https://www.ocbase.com/download"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+
+    [PSCustomObject]@{
+        Nome = "Adobe Reader"
+        Categoria = "Suporte"
+        Tipo = "Manual"
+        Descricao = "Leitor de PDF oficial da Adobe para abrir, visualizar e comentar documentos PDF."
+        Metodo = "Pagina"
+        Url = "https://get.adobe.com/br/reader/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "AnyDesk"
+        Categoria = "Suporte"
+        Tipo = "Automatico"
+        Descricao = "Acesso remoto leve e rapido para suporte tecnico e manutencao a distancia."
+        Metodo = "Direto"
+        Url = "https://download.anydesk.com/AnyDesk.exe"
+        Arquivo = "AnyDesk.exe"
+        Fonte = "Download direto oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "Chrome"
+        Categoria = "Suporte"
+        Tipo = "Automatico"
+        Descricao = "Navegador da Google. Aqui usa o instalador enterprise 64-bit para download direto."
+        Metodo = "Direto"
+        Url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+        Arquivo = "Chrome.msi"
+        Fonte = "Download direto oficial"
+    }
+    [PSCustomObject]@{
+        Nome = "Java"
+        Categoria = "Suporte"
+        Tipo = "Manual"
+        Descricao = "Pagina oficial do Java para baixar e instalar a versao necessaria de acordo com o teu uso."
+        Metodo = "Pagina"
+        Url = "https://www.java.com/pt-br/download/"
+        Arquivo = ""
+        Fonte = "Pagina oficial"
+    }
+)
+
+# =========================
+# FUNCOES VISUAIS
+# =========================
+function Garantir-Pasta {
+    param([string]$Pasta)
+
+    if (!(Test-Path $Pasta)) {
+        New-Item -ItemType Directory -Path $Pasta -Force | Out-Null
+    }
+}
+
+function Criar-Label {
     param(
-        [string]$Message,
-        [string]$Type = "INFO"
+        [string]$Texto,
+        [int]$X,
+        [int]$Y,
+        [int]$Tamanho = 10,
+        [bool]$Negrito = $false,
+        $Cor = $null
     )
 
-    $time = Get-Date -Format "HH:mm:ss"
-    Write-Host "[$time] [$Type] $Message"
-}
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $Texto
+    $lbl.AutoSize = $true
+    $lbl.Location = New-Object System.Drawing.Point($X, $Y)
+    $lbl.BackColor = [System.Drawing.Color]::Transparent
 
-function Get-PowerSchemes {
-    $schemes = @()
-    $lines = powercfg /list 2>$null
-
-    foreach ($line in $lines) {
-        if ($line -match 'Power Scheme GUID:\s*([a-fA-F0-9\-]{36})\s*\((.*?)\)(\s+\*)?') {
-            $schemes += [PSCustomObject]@{
-                Guid     = $matches[1].Trim()
-                Name     = $matches[2].Trim()
-                IsActive = [bool]$matches[3]
-            }
-        }
-    }
-
-    return $schemes
-}
-
-function Get-SchemeByName {
-    param([string]$Name)
-
-    $schemes = Get-PowerSchemes
-    return $schemes | Where-Object { $_.Name -eq $Name }
-}
-
-function Get-SchemeByGuid {
-    param([string]$Guid)
-
-    $schemes = Get-PowerSchemes
-    return $schemes | Where-Object { $_.Guid -eq $Guid }
-}
-
-function Remove-DuplicateLynextPlans {
-    param([string]$KeepGuid)
-
-    $plans = Get-SchemeByName -Name $global:LynextPlanName
-
-    foreach ($plan in $plans) {
-        if ($plan.Guid -ne $KeepGuid) {
-            try {
-                powercfg /delete $plan.Guid | Out-Null
-                Write-Log "Plano duplicado removido: $($plan.Guid)"
-            }
-            catch {
-                Write-Log "Falha ao remover duplicado: $($plan.Guid)" "WARN"
-            }
-        }
-    }
-}
-
-function Test-UltimatePerformanceAvailable {
-    $ultimate = Get-SchemeByGuid -Guid $global:UltimatePerfGuid
-    return ($null -ne $ultimate)
-}
-
-function New-LynextUltraPlan {
-    $existing = Get-SchemeByName -Name $global:LynextPlanName | Select-Object -First 1
-    if ($existing) {
-        Remove-DuplicateLynextPlans -KeepGuid $existing.Guid
-        return $existing.Guid
-    }
-
-    $baseGuid = $null
-
-    if (Test-UltimatePerformanceAvailable) {
-        $baseGuid = $global:UltimatePerfGuid
-        Write-Log "Base escolhida: Ultimate Performance"
+    if ($Negrito) {
+        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho, [System.Drawing.FontStyle]::Bold)
     }
     else {
-        $baseGuid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" # High Performance
-        Write-Log "Ultimate Performance indisponivel. Usando High Performance como base." "WARN"
+        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", $Tamanho)
     }
+
+    if ($null -ne $Cor) {
+        $lbl.ForeColor = $Cor
+    }
+    else {
+        $lbl.ForeColor = $fgMain
+    }
+
+    return $lbl
+}
+
+function Criar-Botao {
+    param(
+        [string]$Texto,
+        [int]$X,
+        [int]$Y,
+        [int]$Largura = 140,
+        [int]$Altura = 34
+    )
+
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Text = $Texto
+    $btn.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $btn.Location = New-Object System.Drawing.Point($X, $Y)
+    $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btn.UseVisualStyleBackColor = $false
+    $btn.BackColor = $bgButton
+    $btn.ForeColor = $fgMain
+    $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $btn.FlatAppearance.BorderSize = 1
+    $btn.FlatAppearance.BorderColor = $borderColor
+    $btn.FlatAppearance.MouseOverBackColor = $bgButton2
+    $btn.FlatAppearance.MouseDownBackColor = $accentSoft
+    $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+    return $btn
+}
+
+function Criar-Painel {
+    param(
+        [int]$X,
+        [int]$Y,
+        [int]$Largura,
+        [int]$Altura,
+        $Cor = $bgPanel
+    )
+
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Location = New-Object System.Drawing.Point($X, $Y)
+    $panel.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $panel.BackColor = $Cor
+    $panel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    return $panel
+}
+
+function Criar-Lista {
+    param(
+        [int]$X,
+        [int]$Y,
+        [int]$Largura,
+        [int]$Altura
+    )
+
+    $list = New-Object System.Windows.Forms.ListBox
+    $list.Location = New-Object System.Drawing.Point($X, $Y)
+    $list.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $list.BackColor = $bgList
+    $list.ForeColor = $fgMain
+    $list.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $list.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $list.IntegralHeight = $false
+    $list.DisplayMember = "Nome"
+    return $list
+}
+
+function Criar-TextoLeitura {
+    param(
+        [int]$X,
+        [int]$Y,
+        [int]$Largura,
+        [int]$Altura
+    )
+
+    $txt = New-Object System.Windows.Forms.TextBox
+    $txt.Location = New-Object System.Drawing.Point($X, $Y)
+    $txt.Size = New-Object System.Drawing.Size($Largura, $Altura)
+    $txt.Multiline = $true
+    $txt.ReadOnly = $true
+    $txt.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $txt.BackColor = $bgList
+    $txt.ForeColor = $fgMain
+    $txt.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $txt.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+    return $txt
+}
+
+function Set-Status {
+    param(
+        [System.Windows.Forms.Label]$Label,
+        [string]$Texto,
+        [string]$Tipo = "normal"
+    )
+
+    $Label.Text = $Texto
+
+    switch ($Tipo) {
+        "ok"      { $Label.ForeColor = $okColor }
+        "erro"    { $Label.ForeColor = $errColor }
+        "andando" { $Label.ForeColor = $runColor }
+        "manual"  { $Label.ForeColor = $manualColor }
+        default   { $Label.ForeColor = $fgSoft }
+    }
+}
+
+# =========================
+# FUNCOES DE DOWNLOAD
+# =========================
+function Get-WebHeaders {
+    return @{
+        "User-Agent" = "Lynext-Downloader"
+        "Accept"     = "*/*"
+    }
+}
+
+function Get-LatestGitHubStableAsset {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoApiUrl,
+        [string]$ExtensaoDesejada = ".zip"
+    )
 
     try {
-        $output = powercfg /duplicatescheme $baseGuid 2>&1
-
-        $newGuid = $null
-        foreach ($line in $output) {
-            if ($line -match '([a-fA-F0-9\-]{36})') {
-                $newGuid = $matches[1]
-                break
-            }
+        $headers = @{
+            "User-Agent" = "Lynext-Downloader"
+            "Accept"     = "application/vnd.github+json"
         }
 
-        if (-not $newGuid) {
-            Start-Sleep -Milliseconds 500
-            $latest = Get-PowerSchemes | Sort-Object Name
-            $candidate = $latest | Where-Object { $_.Name -ne "Balanced" -and $_.Name -ne "Power saver" -and $_.Name -ne "High performance" } | Select-Object -Last 1
-            if ($candidate) {
-                $newGuid = $candidate.Guid
-            }
+        $releases = Invoke-RestMethod -Uri $RepoApiUrl -Headers $headers -UseBasicParsing -ErrorAction Stop
+
+        if (-not $releases) {
+            return $null
         }
 
-        if (-not $newGuid) {
-            throw "Nao foi possivel identificar o GUID do novo plano."
+        $releaseEstavel = $releases | Where-Object {
+            $_.prerelease -eq $false -and $_.draft -eq $false
+        } | Select-Object -First 1
+
+        if (-not $releaseEstavel) {
+            return $null
         }
 
-        powercfg /changename $newGuid $global:LynextPlanName "Plano otimizado do Lynext para desempenho maximo" | Out-Null
+        $asset = $releaseEstavel.assets | Where-Object {
+            $_.name -like "*$ExtensaoDesejada"
+        } | Select-Object -First 1
 
-        # Ajustes principais do plano
-        # Monitor / disco / sleep / hibernate
-        powercfg /setacvalueindex $newGuid SUB_VIDEO VIDEOIDLE 0       | Out-Null
-        powercfg /setacvalueindex $newGuid SUB_DISK DISKIDLE 0         | Out-Null
-        powercfg /setacvalueindex $newGuid SUB_SLEEP STANDBYIDLE 0     | Out-Null
-        powercfg /setacvalueindex $newGuid SUB_SLEEP HIBERNATEIDLE 0   | Out-Null
+        if (-not $asset) {
+            return $null
+        }
 
-        # PCI Express - Link State Power Management = Off
-        powercfg /setacvalueindex $newGuid SUB_PCIEXPRESS ASPM 0       | Out-Null
-
-        # USB selective suspend = Disabled
-        powercfg /setacvalueindex $newGuid 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 | Out-Null
-
-        # Processador
-        # Min CPU = 100 / Max CPU = 100 / Boost agressivo
-        powercfg /setacvalueindex $newGuid SUB_PROCESSOR PROCTHROTTLEMIN 100 | Out-Null
-        powercfg /setacvalueindex $newGuid SUB_PROCESSOR PROCTHROTTLEMAX 100 | Out-Null
-
-        # Processor performance boost mode (Aggressive)
-        powercfg /setacvalueindex $newGuid SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 2 | Out-Null
-
-        Remove-DuplicateLynextPlans -KeepGuid $newGuid
-
-        Write-Log "Plano $global:LynextPlanName criado com sucesso."
-        return $newGuid
+        return [PSCustomObject]@{
+            Url         = $asset.browser_download_url
+            NomeArquivo = $asset.name
+            Versao      = $releaseEstavel.tag_name
+        }
     }
     catch {
-        Write-Log "Erro ao criar plano Lynext: $($_.Exception.Message)" "ERROR"
         return $null
     }
 }
 
-function Set-ActiveSchemeSafe {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Guid,
+function Get-LatestISLCAsset {
+    try {
+        $headers = Get-WebHeaders
 
-        [string]$ExpectedName = ""
+        $listagem = Invoke-WebRequest `
+            -Uri "https://www.wagnardsoft.com/intelligent-standby-list-cleaner-islc" `
+            -Headers $headers `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $matchPost = [regex]::Matches(
+            $listagem.Content,
+            'href="([^"]*?/content/Download-Intelligent-standby-list-cleaner-ISLC-[^"]*)"'
+        ) | Select-Object -First 1
+
+        if (-not $matchPost) {
+            throw "Nao foi possivel localizar a pagina da versao atual do ISLC."
+        }
+
+        $postUrl = $matchPost.Groups[1].Value
+        if ($postUrl -notmatch '^https?://') {
+            $postUrl = "https://www.wagnardsoft.com" + $postUrl
+        }
+
+        $paginaVersao = Invoke-WebRequest `
+            -Uri $postUrl `
+            -Headers $headers `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $matchExe = [regex]::Matches(
+            $paginaVersao.Content,
+            'href="([^"]*?/ISLC/[^"]+\.exe)"'
+        ) | Select-Object -First 1
+
+        if (-not $matchExe) {
+            throw "Nao foi possivel localizar o executavel do ISLC."
+        }
+
+        $exeUrl = $matchExe.Groups[1].Value
+        if ($exeUrl -notmatch '^https?://') {
+            $exeUrl = "https://www.wagnardsoft.com" + $exeUrl
+        }
+
+        return [PSCustomObject]@{
+            Url         = $exeUrl
+            NomeArquivo = "ISLC.exe"
+            Versao      = "Atual"
+        }
+    }
+    catch {
+        return [PSCustomObject]@{
+            Url         = "https://www.wagnardsoft.com/ISLC/ISLC%20v1.0.4.5.exe"
+            NomeArquivo = "ISLC.exe"
+            Versao      = "Fallback"
+        }
+    }
+}
+
+function Iniciar-DownloadExterno {
+    param(
+        [string]$Nome,
+        [string]$Url,
+        [string]$Arquivo
     )
 
     try {
-        powercfg /setactive $Guid | Out-Null
-        Start-Sleep -Milliseconds 300
+        Garantir-Pasta $destinoBase
+        $saida = Join-Path $destinoBase $Arquivo
 
-        $active = (Get-PowerSchemes | Where-Object { $_.IsActive } | Select-Object -First 1)
-
-        if (-not $active) {
-            throw "Nao foi possivel confirmar o plano ativo."
+        if (Test-Path $saida) {
+            Remove-Item $saida -Force -ErrorAction SilentlyContinue
         }
 
-        if ($active.Guid -ne $Guid) {
-            throw "Plano ativo incorreto. Esperado: $Guid | Atual: $($active.Guid) ($($active.Name))"
+        $script = @"
+`$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+try {
+    Invoke-WebRequest -Uri '$Url' -OutFile '$saida' -UseBasicParsing -Headers @{ 'User-Agent'='Lynext-Downloader' }
+    exit 0
+}
+catch {
+    exit 1
+}
+"@
+
+        $proc = Start-Process powershell.exe `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command $script" `
+            -WindowStyle Hidden `
+            -PassThru
+
+        $downloadsAtivos[$Nome] = [PSCustomObject]@{
+            ProcessoId = $proc.Id
+            Arquivo    = $saida
+            Finalizado = $false
         }
 
-        if ($ExpectedName -and $active.Name -ne $ExpectedName) {
-            Write-Log "GUID correto ativo, mas o nome difere: $($active.Name)" "WARN"
+        $statusApps[$Nome] = [PSCustomObject]@{
+            Texto = "Baixando..."
+            Tipo  = "andando"
         }
 
-        Write-Log "Plano ativo definido: $($active.Name)"
         return $true
     }
     catch {
-        Write-Log $_.Exception.Message "ERROR"
+        $statusApps[$Nome] = [PSCustomObject]@{
+            Texto = "Erro [X]"
+            Tipo  = "erro"
+        }
         return $false
     }
 }
 
-function Apply-BalancedMode {
-    Write-Log "Aplicando modo Equilibrado..."
-    return (Set-ActiveSchemeSafe -Guid "381b4222-f694-41f0-9685-ff5bb260df2e" -ExpectedName "Balanced")
+function Resolver-DownloadInfo {
+    param($App)
+
+    switch ($App.Metodo) {
+        "Direto" {
+            return [PSCustomObject]@{
+                Url     = $App.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        "GitHubLatestZip" {
+            $asset = Get-LatestGitHubStableAsset -RepoApiUrl $App.Url -ExtensaoDesejada ".zip"
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url     = $asset.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        "ISLCLatest" {
+            $asset = Get-LatestISLCAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url     = $asset.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        default {
+            return $null
+        }
+    }
 }
 
-function Apply-HighPerformanceMode {
-    Write-Log "Aplicando modo High Performance..."
-    return (Set-ActiveSchemeSafe -Guid "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" -ExpectedName "High performance")
+# =========================
+# FUNCOES DE UI / DADOS
+# =========================
+function Get-AppStatusInfo {
+    param([string]$Nome)
+
+    if ($statusApps.ContainsKey($Nome)) {
+        return $statusApps[$Nome]
+    }
+
+    return [PSCustomObject]@{
+        Texto = "Aguardando"
+        Tipo  = "normal"
+    }
 }
 
-function Apply-LynextUltraPerformanceMode {
-    Write-Log "Aplicando modo Lynext Ultra Performance..."
+function Get-SelectedAppFromCategory {
+    param([string]$Categoria)
 
-    $plan = Get-SchemeByName -Name $global:LynextPlanName | Select-Object -First 1
-    $guid = $null
+    if (-not $categoryViews.ContainsKey($Categoria)) {
+        return $null
+    }
 
-    if ($plan) {
-        $guid = $plan.Guid
-        Remove-DuplicateLynextPlans -KeepGuid $guid
+    $view = $categoryViews[$Categoria]
+
+    if ($null -ne $view.ListaAuto.SelectedItem) {
+        return $view.ListaAuto.SelectedItem
+    }
+
+    if ($null -ne $view.ListaManual.SelectedItem) {
+        return $view.ListaManual.SelectedItem
+    }
+
+    return $null
+}
+
+function AtualizarDetalhesCategoria {
+    param([string]$Categoria)
+
+    if (-not $categoryViews.ContainsKey($Categoria)) {
+        return
+    }
+
+    $view = $categoryViews[$Categoria]
+    $app = Get-SelectedAppFromCategory $Categoria
+
+    if ($null -eq $app) {
+        $view.Titulo.Text = "Selecione um app"
+        $view.Tipo.Text = "Tipo: -"
+        $view.Fonte.Text = "Fonte: -"
+        $view.Arquivo.Text = "Arquivo: -"
+        $view.Descricao.Text = "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
+        $view.Acao.Text = "Selecionar app"
+        $view.Acao.Enabled = $false
+        Set-Status $view.Status "Aguardando selecao." "normal"
+        return
+    }
+
+    $status = Get-AppStatusInfo $app.Nome
+
+    $view.Titulo.Text = $app.Nome
+    $view.Tipo.Text = "Tipo: $($app.Tipo)"
+    $view.Fonte.Text = "Fonte: $($app.Fonte)"
+    if ([string]::IsNullOrWhiteSpace($app.Arquivo)) {
+        $view.Arquivo.Text = "Arquivo: aberto pelo site"
     }
     else {
-        $guid = New-LynextUltraPlan
+        $view.Arquivo.Text = "Arquivo: $($app.Arquivo)"
+    }
+    $view.Descricao.Text = $app.Descricao
+
+    if ($app.Tipo -eq "Automatico") {
+        $view.Acao.Text = "Baixar"
+    }
+    else {
+        $view.Acao.Text = "Abrir pagina"
     }
 
-    if (-not $guid) {
-        Write-Log "Falha ao obter o plano Lynext. Nao vou cair automaticamente para Balanced." "ERROR"
-        return $false
-    }
-
-    $ok = Set-ActiveSchemeSafe -Guid $guid -ExpectedName $global:LynextPlanName
-
-    if (-not $ok) {
-        Write-Log "Falha ao ativar o plano Lynext Ultra Performance." "ERROR"
-        return $false
-    }
-
-    return $true
+    $view.Acao.Enabled = $true
+    Set-Status $view.Status $status.Text $status.Tipo
 }
 
-function Show-AvailablePowerPlans {
-    $schemes = Get-PowerSchemes
+function PopularListaApps {
+    param(
+        [System.Windows.Forms.ListBox]$Lista,
+        [object[]]$Itens
+    )
 
-    Write-Host ""
-    Write-Host "=========== PLANOS DE ENERGIA ===========" -ForegroundColor Cyan
-    foreach ($scheme in $schemes) {
-        $mark = if ($scheme.IsActive) { "*" } else { " " }
-        Write-Host " [$mark] $($scheme.Name) - $($scheme.Guid)"
+    $Lista.Items.Clear()
+
+    foreach ($item in ($Itens | Sort-Object Nome)) {
+        [void]$Lista.Items.Add($item)
     }
-    Write-Host "========================================="
-    Write-Host ""
 }
+
+function AbrirPastaDownloads {
+    Garantir-Pasta $destinoBase
+    Start-Process explorer.exe $destinoBase | Out-Null
+}
+
+function ExecutarAcaoDoApp {
+    param([string]$Categoria)
+
+    $app = Get-SelectedAppFromCategory $Categoria
+    if ($null -eq $app) {
+        return
+    }
+
+    if ($app.Tipo -eq "Manual") {
+        try {
+            Start-Process $app.Url
+            $statusApps[$app.Nome] = [PSCustomObject]@{
+                Texto = "Pagina aberta [OK]"
+                Tipo  = "manual"
+            }
+            $geral.Text = "Pagina de $($app.Nome) aberta."
+        }
+        catch {
+            $statusApps[$app.Nome] = [PSCustomObject]@{
+                Texto = "Erro [X]"
+                Tipo  = "erro"
+            }
+            $geral.Text = "Falha ao abrir pagina de $($app.Nome)."
+        }
+
+        AtualizarDetalhesCategoria $Categoria
+        return
+    }
+
+    $geral.Text = "Preparando download de $($app.Nome)..."
+    $statusApps[$app.Nome] = [PSCustomObject]@{
+        Texto = "Preparando download..."
+        Tipo  = "andando"
+    }
+    AtualizarDetalhesCategoria $Categoria
+
+    $downloadInfo = Resolver-DownloadInfo $app
+
+    if ($null -eq $downloadInfo) {
+        $statusApps[$app.Nome] = [PSCustomObject]@{
+            Texto = "Erro ao obter versao [X]"
+            Tipo  = "erro"
+        }
+        $geral.Text = "Falha ao resolver download de $($app.Nome)."
+        AtualizarDetalhesCategoria $Categoria
+        return
+    }
+
+    $ok = Iniciar-DownloadExterno -Nome $app.Nome -Url $downloadInfo.Url -Arquivo $downloadInfo.Arquivo
+
+    if ($ok) {
+        $geral.Text = "Baixando $($app.Nome)..."
+    }
+    else {
+        $geral.Text = "Falha ao iniciar $($app.Nome)."
+    }
+
+    AtualizarDetalhesCategoria $Categoria
+}
+
+function CriarAbaCategoria {
+    param(
+        [string]$Categoria,
+        [System.Windows.Forms.TabControl]$TabControl
+    )
+
+    $tab = New-Object System.Windows.Forms.TabPage
+    $tab.Text = $Categoria
+    $tab.BackColor = $bgMain
+    $tab.ForeColor = $fgMain
+
+    $painelEsquerdo = Criar-Painel 16 18 400 540 $bgPanel
+    $tab.Controls.Add($painelEsquerdo)
+
+    $lblAuto = Criar-Label "Automatico" 16 14 11 $true $accent
+    $painelEsquerdo.Controls.Add($lblAuto)
+
+    $lblAutoSub = Criar-Label "Baixa direto para Downloads\Instaladores" 16 36 9 $false $fgSoft
+    $painelEsquerdo.Controls.Add($lblAutoSub)
+
+    $listaAuto = Criar-Lista 16 60 365 180
+    $painelEsquerdo.Controls.Add($listaAuto)
+
+    $lblManual = Criar-Label "Manual" 16 260 11 $true $accent
+    $painelEsquerdo.Controls.Add($lblManual)
+
+    $lblManualSub = Criar-Label "Abre a pagina oficial para baixar manualmente" 16 282 9 $false $fgSoft
+    $painelEsquerdo.Controls.Add($lblManualSub)
+
+    $listaManual = Criar-Lista 16 306 365 180
+    $painelEsquerdo.Controls.Add($listaManual)
+
+    $painelDireito = Criar-Painel 432 18 430 540 $bgPanel2
+    $tab.Controls.Add($painelDireito)
+
+    $detTitulo = Criar-Label "Selecione um app" 16 18 15 $true $fgMain
+    $painelDireito.Controls.Add($detTitulo)
+
+    $detTipo = Criar-Label "Tipo: -" 16 56 10 $false $fgSoft
+    $painelDireito.Controls.Add($detTipo)
+
+    $detFonte = Criar-Label "Fonte: -" 16 80 10 $false $fgSoft
+    $painelDireito.Controls.Add($detFonte)
+
+    $detArquivo = Criar-Label "Arquivo: -" 16 104 10 $false $fgSoft
+    $painelDireito.Controls.Add($detArquivo)
+
+    $detDescTitulo = Criar-Label "O que ele faz" 16 140 11 $true $accent
+    $painelDireito.Controls.Add($detDescTitulo)
+
+    $detDesc = Criar-TextoLeitura 16 166 395 185
+    $detDesc.Text = "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
+    $painelDireito.Controls.Add($detDesc)
+
+    $detStatusTitulo = Criar-Label "Status" 16 378 11 $true $accent
+    $painelDireito.Controls.Add($detStatusTitulo)
+
+    $detStatus = Criar-Label "Aguardando selecao." 16 404 10 $false $fgSoft
+    $painelDireito.Controls.Add($detStatus)
+
+    $btnAcao = Criar-Botao "Selecionar app" 16 455 180 36
+    $btnAcao.Enabled = $false
+    $painelDireito.Controls.Add($btnAcao)
+
+    $btnPasta = Criar-Botao "Abrir pasta" 212 455 140 36
+    $painelDireito.Controls.Add($btnPasta)
+
+    $itemsCategoria = $apps | Where-Object { $_.Categoria -eq $Categoria }
+    $itemsAuto = $itemsCategoria | Where-Object { $_.Tipo -eq "Automatico" } | Sort-Object Nome
+    $itemsManual = $itemsCategoria | Where-Object { $_.Tipo -eq "Manual" } | Sort-Object Nome
+
+    PopularListaApps -Lista $listaAuto -Itens $itemsAuto
+    PopularListaApps -Lista $listaManual -Itens $itemsManual
+
+    $categoryViews[$Categoria] = [PSCustomObject]@{
+        Tab         = $tab
+        ListaAuto   = $listaAuto
+        ListaManual = $listaManual
+        Titulo      = $detTitulo
+        Tipo        = $detTipo
+        Fonte       = $detFonte
+        Arquivo     = $detArquivo
+        Descricao   = $detDesc
+        Status      = $detStatus
+        Acao        = $btnAcao
+    }
+
+    $listaAuto.Add_SelectedIndexChanged({
+        if ($listaAuto.SelectedIndex -ge 0) {
+            $listaManual.ClearSelected()
+        }
+        AtualizarDetalhesCategoria $Categoria
+    }.GetNewClosure())
+
+    $listaManual.Add_SelectedIndexChanged({
+        if ($listaManual.SelectedIndex -ge 0) {
+            $listaAuto.ClearSelected()
+        }
+        AtualizarDetalhesCategoria $Categoria
+    }.GetNewClosure())
+
+    $listaAuto.Add_DoubleClick({
+        if ($listaAuto.SelectedIndex -ge 0) {
+            ExecutarAcaoDoApp $Categoria
+        }
+    }.GetNewClosure())
+
+    $listaManual.Add_DoubleClick({
+        if ($listaManual.SelectedIndex -ge 0) {
+            ExecutarAcaoDoApp $Categoria
+        }
+    }.GetNewClosure())
+
+    $btnAcao.Add_Click({
+        ExecutarAcaoDoApp $Categoria
+    }.GetNewClosure())
+
+    $btnPasta.Add_Click({
+        AbrirPastaDownloads
+    }.GetNewClosure())
+
+    $TabControl.TabPages.Add($tab) | Out-Null
+}
+
+# =========================
+# FORM
+# =========================
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Lynext - Downloads"
+$form.Size = New-Object System.Drawing.Size(920, 780)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.Topmost = $true
+$form.BackColor = $bgMain
+$form.ForeColor = $fgMain
+
+$titulo = Criar-Label "Central de Downloads" 320 20 17 $true $fgMain
+$form.Controls.Add($titulo)
+
+$subtitulo = Criar-Label "Performance, monitoramento e suporte" 300 52 9 $false $fgSoft
+$form.Controls.Add($subtitulo)
+
+$tabControl = New-Object System.Windows.Forms.TabControl
+$tabControl.Location = New-Object System.Drawing.Point(12, 92)
+$tabControl.Size = New-Object System.Drawing.Size(890, 600)
+$tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$tabControl.BackColor = $tabBackColor
+$form.Controls.Add($tabControl)
+
+CriarAbaCategoria -Categoria "Performance" -TabControl $tabControl
+CriarAbaCategoria -Categoria "Monitoramento" -TabControl $tabControl
+CriarAbaCategoria -Categoria "Suporte" -TabControl $tabControl
+
+foreach ($tab in $tabControl.TabPages) {
+    $tab.BackColor = $bgMain
+    $tab.ForeColor = $fgMain
+}
+
+# =========================
+# RODAPE
+# =========================
+$progress = New-Object System.Windows.Forms.ProgressBar
+$progress.Location = New-Object System.Drawing.Point(16, 710)
+$progress.Size = New-Object System.Drawing.Size(560, 18)
+$progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+$progress.Minimum = 0
+$progress.Maximum = 100
+$progress.Value = 0
+$form.Controls.Add($progress)
+
+$geral = Criar-Label "Pronto para iniciar." 16 732 9 $false $fgSoft
+$form.Controls.Add($geral)
+
+$btnFechar = Criar-Botao "Fechar" 795 704 90 34
+$form.Controls.Add($btnFechar)
+
+$btnFechar.Add_Click({
+    $temAtivo = $false
+
+    foreach ($item in $downloadsAtivos.Values) {
+        if (-not $item.Finalizado) {
+            $temAtivo = $true
+            break
+        }
+    }
+
+    if ($temAtivo) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Ainda existem downloads em andamento.",
+            "Lynext"
+        ) | Out-Null
+        return
+    }
+
+    $form.Close()
+})
+
+# =========================
+# TIMER
+# =========================
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 700
+
+$timer.Add_Tick({
+    $ativos = 0
+    $concluidos = 0
+    $total = $downloadsAtivos.Count
+
+    foreach ($nome in @($downloadsAtivos.Keys)) {
+        $info = $downloadsAtivos[$nome]
+
+        if (-not $info.Finalizado) {
+            $proc = Get-Process -Id $info.ProcessoId -ErrorAction SilentlyContinue
+
+            if ($proc) {
+                $ativos++
+
+                if (Test-Path $info.Arquivo) {
+                    try {
+                        $tam = (Get-Item $info.Arquivo).Length
+                        if ($tam -gt 0) {
+                            $mb = [math]::Round($tam / 1MB, 2)
+                            $statusApps[$nome] = [PSCustomObject]@{
+                                Texto = "Baixando... $mb MB"
+                                Tipo  = "andando"
+                            }
+                        }
+                    }
+                    catch {
+                        $statusApps[$nome] = [PSCustomObject]@{
+                            Texto = "Baixando..."
+                            Tipo  = "andando"
+                        }
+                    }
+                }
+                else {
+                    $statusApps[$nome] = [PSCustomObject]@{
+                        Texto = "Baixando..."
+                        Tipo  = "andando"
+                    }
+                }
+            }
+            else {
+                $info.Finalizado = $true
+                $downloadsAtivos[$nome] = $info
+
+                if ((Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
+                    $statusApps[$nome] = [PSCustomObject]@{
+                        Texto = "Concluido [OK]"
+                        Tipo  = "ok"
+                    }
+                    $geral.Text = "$nome concluido."
+                }
+                else {
+                    $statusApps[$nome] = [PSCustomObject]@{
+                        Texto = "Erro [X]"
+                        Tipo  = "erro"
+                    }
+                    $geral.Text = "Falha em $nome."
+                }
+            }
+        }
+
+        if ($info.Finalizado -and (Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
+            $concluidos++
+        }
+    }
+
+    if ($ativos -gt 0) {
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+    }
+    else {
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+
+        if ($total -gt 0) {
+            $progress.Value = [math]::Min([int](($concluidos / $total) * 100), 100)
+        }
+        else {
+            $progress.Value = 0
+        }
+    }
+
+    foreach ($categoria in $categoryViews.Keys) {
+        AtualizarDetalhesCategoria $categoria
+    }
+})
+
+$timer.Start()
+
+# =========================
+# INICIALIZACAO
+# =========================
+foreach ($categoria in $categoryViews.Keys) {
+    AtualizarDetalhesCategoria $categoria
+}
+
+[void]$form.ShowDialog()
