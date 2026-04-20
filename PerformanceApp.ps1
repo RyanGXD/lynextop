@@ -27,6 +27,17 @@ $script:Task = $null
 $script:IsBusy = $false
 
 # =========================================================
+# POWER GUIDS / NAMES
+# =========================================================
+$script:GuidBalanced           = "381b4222-f694-41f0-9685-ff5bb260df2e"
+$script:GuidHighPerformance    = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
+$script:GuidUltimatePerformance= "e9a42b02-d5df-448d-aa00-03f14749eb61"
+
+$script:PlanUltraName   = "Lynext Ultra Performance"
+$script:PlanLiteName    = "Lynext Lite"
+$script:PlanThermalName = "Lynext Thermal"
+
+# =========================================================
 # TEMA
 # =========================================================
 $bgMain      = [System.Drawing.Color]::FromArgb(8,12,10)
@@ -127,6 +138,78 @@ function Get-ActivePowerSchemeGuid {
     $line = powercfg /getactivescheme
     if ($line -match '([a-fA-F0-9-]{36})') { return $Matches[1] }
     return $null
+}
+
+function Get-PowerSchemes {
+    $list = powercfg /list | Out-String
+    $items = @()
+
+    foreach ($line in ($list -split "`r?`n")) {
+        if ($line -match 'Power Scheme GUID:\s*([a-fA-F0-9\-]{36})\s+\((.*?)\)(\s+\*)?') {
+            $items += [pscustomobject]@{
+                Guid     = $matches[1].Trim()
+                Name     = $matches[2].Trim()
+                IsActive = [bool]$matches[3]
+            }
+        }
+    }
+
+    return $items
+}
+
+function Get-SchemeByName {
+    param([string]$Name)
+    Get-PowerSchemes | Where-Object { $_.Name -eq $Name }
+}
+
+function Remove-DuplicatePlansByName {
+    param(
+        [string]$Name,
+        [string]$KeepGuid
+    )
+
+    $plans = Get-SchemeByName -Name $Name
+    foreach ($p in $plans) {
+        if ($p.Guid -ne $KeepGuid) {
+            try { powercfg /delete $p.Guid | Out-Null } catch {}
+        }
+    }
+}
+
+function Ensure-CustomPlan {
+    param(
+        [string]$PlanName,
+        [string]$PreferredBaseGuid,
+        [string]$FallbackBaseGuid
+    )
+
+    $existing = Get-SchemeByName -Name $PlanName | Select-Object -First 1
+    if ($existing) {
+        Remove-DuplicatePlansByName -Name $PlanName -KeepGuid $existing.Guid
+        return $existing.Guid
+    }
+
+    $baseGuid = $PreferredBaseGuid
+    $allPlans = Get-PowerSchemes
+
+    if (-not ($allPlans.Guid -contains $PreferredBaseGuid)) {
+        $baseGuid = $FallbackBaseGuid
+    }
+
+    $dupOut = powercfg -duplicatescheme $baseGuid 2>&1 | Out-String
+    $newGuid = $null
+
+    if ($dupOut -match '([a-fA-F0-9\-]{36})') {
+        $newGuid = $matches[1]
+    }
+
+    if (-not $newGuid) {
+        throw "Nao foi possivel criar o plano $PlanName."
+    }
+
+    powercfg /changename $newGuid $PlanName | Out-Null
+    Remove-DuplicatePlansByName -Name $PlanName -KeepGuid $newGuid
+    return $newGuid
 }
 
 function Test-ModernStandby {
@@ -418,7 +501,7 @@ function Poll-LynextTask {
 # =========================================================
 # SCRIPTS / ACTIONS
 # =========================================================
-function Get-BackupCode {
+function Get-SharedCode {
 @"
 function Get-RegValue {
     param([string]`$Path,[string]`$Name)
@@ -428,6 +511,60 @@ function Get-ActivePowerSchemeGuid {
     `$line = powercfg /getactivescheme
     if (`$line -match '([a-fA-F0-9-]{36})') { return `$Matches[1] }
     return `$null
+}
+function Get-PowerSchemes {
+    `$list = powercfg /list | Out-String
+    `$items = @()
+    foreach (`$line in (`$list -split "`r?`n")) {
+        if (`$line -match 'Power Scheme GUID:\s*([a-fA-F0-9\-]{36})\s+\((.*?)\)(\s+\*)?') {
+            `$items += [pscustomobject]@{
+                Guid     = `$matches[1].Trim()
+                Name     = `$matches[2].Trim()
+                IsActive = [bool]`$matches[3]
+            }
+        }
+    }
+    return `$items
+}
+function Get-SchemeByName {
+    param([string]`$Name)
+    Get-PowerSchemes | Where-Object { `$_.Name -eq `$Name }
+}
+function Remove-DuplicatePlansByName {
+    param([string]`$Name,[string]`$KeepGuid)
+    `$plans = Get-SchemeByName -Name `$Name
+    foreach (`$p in `$plans) {
+        if (`$p.Guid -ne `$KeepGuid) {
+            try { powercfg /delete `$p.Guid | Out-Null } catch {}
+        }
+    }
+}
+function Ensure-CustomPlan {
+    param([string]`$PlanName,[string]`$PreferredBaseGuid,[string]`$FallbackBaseGuid)
+    `$existing = Get-SchemeByName -Name `$PlanName | Select-Object -First 1
+    if (`$existing) {
+        Remove-DuplicatePlansByName -Name `$PlanName -KeepGuid `$existing.Guid
+        return `$existing.Guid
+    }
+
+    `$baseGuid = `$PreferredBaseGuid
+    `$allPlans = Get-PowerSchemes
+    if (-not (`$allPlans.Guid -contains `$PreferredBaseGuid)) {
+        `$baseGuid = `$FallbackBaseGuid
+    }
+
+    `$dupOut = powercfg -duplicatescheme `$baseGuid 2>&1 | Out-String
+    `$newGuid = `$null
+    if (`$dupOut -match '([a-fA-F0-9\-]{36})') {
+        `$newGuid = `$matches[1]
+    }
+    if (-not `$newGuid) {
+        throw "Nao foi possivel criar o plano `$PlanName."
+    }
+
+    powercfg /changename `$newGuid `$PlanName | Out-Null
+    Remove-DuplicatePlansByName -Name `$PlanName -KeepGuid `$newGuid
+    return `$newGuid
 }
 function Test-ModernStandby {
     try {
@@ -466,6 +603,37 @@ function Get-NvidiaSmiPath {
     }
     return `$null
 }
+function Set-RegDwordSafe {
+    param([string]`$Path,[string]`$Name,[UInt32]`$Value)
+    if (-not (Test-Path `$Path)) { New-Item -Path `$Path -Force | Out-Null }
+    New-ItemProperty -Path `$Path -Name `$Name -Value ([UInt32]`$Value) -PropertyType DWord -Force | Out-Null
+}
+function Remove-RegValue {
+    param([string]`$Path,[string]`$Name)
+    try {
+        if (Test-Path `$Path) {
+            Remove-ItemProperty -Path `$Path -Name `$Name -Force -ErrorAction SilentlyContinue
+        }
+    }
+    catch {}
+}
+function Set-PowerValueSafe {
+    param(
+        [string]`$Scheme,
+        [string]`$Subgroup,
+        [string]`$Setting,
+        [int]`$AcValue,
+        [int]`$DcValue
+    )
+    try { powercfg /setacvalueindex `$Scheme `$Subgroup `$Setting `$AcValue | Out-Null } catch {}
+    try { powercfg /setdcvalueindex `$Scheme `$Subgroup `$Setting `$DcValue | Out-Null } catch {}
+}
+"@
+}
+
+function Get-BackupCode {
+@"
+$(Get-SharedCode)
 `$data = @{
     CreatedAt = (Get-Date).ToString("s")
     PowerSchemeGuid = Get-ActivePowerSchemeGuid
@@ -500,165 +668,115 @@ if (`$nvidiaSmi) {
     catch {}
 }
 `$data | ConvertTo-Json -Depth 12 | Set-Content -Path '$($script:BackupFile)' -Encoding UTF8
+'Backup salvo com sucesso.'
 "@
 }
 
 function Get-CPUUltraCode {
 @"
-function Set-PowerValueSafe {
-    param([string]`$Subgroup,[string]`$Setting,[int]`$AcValue,[int]`$DcValue)
-    try { powercfg /setacvalueindex scheme_current `$Subgroup `$Setting `$AcValue | Out-Null } catch {}
-    try { powercfg /setdcvalueindex scheme_current `$Subgroup `$Setting `$DcValue | Out-Null } catch {}
-    try { powercfg /setactive scheme_current | Out-Null } catch {}
-}
-function Test-ModernStandby {
-    try {
-        `$out = powercfg /a | Out-String
-        if (`$out -match "Standby \(S0 Low Power Idle\)") { return `$true }
-    }
-    catch {}
-    return `$false
-}
-`$modern = Test-ModernStandby
-if (`$modern) {
-    powercfg /setactive SCHEME_BALANCED | Out-Null
-    'Modern Standby detectado. Usando Balanced compativel.'
-}
-else {
-    try {
-        `$guid = 'e9a42b02-d5df-448d-aa00-03f14749eb61'
-        `$result = powercfg -duplicatescheme `$guid 2>&1 | Out-String
-        if (`$result -match '([a-fA-F0-9-]{36})') {
-            `$newGuid = `$Matches[1]
-            powercfg /changename `$newGuid 'Lynext Ultra Performance' | Out-Null
-            powercfg /setactive `$newGuid | Out-Null
-            'Plano Lynext Ultra Performance ativado.'
-        }
-        else {
-            powercfg /setactive SCHEME_MIN | Out-Null
-            'Ultimate indisponivel. Usando High Performance.'
-        }
-    }
-    catch {
-        powercfg /setactive SCHEME_MIN | Out-Null
-        'Ultimate indisponivel. Usando High Performance.'
-    }
-}
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMIN'    -AcValue 100 -DcValue 50
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMAX'    -AcValue 100 -DcValue 100
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFEPP'            -AcValue 0   -DcValue 15
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFBOOSTMODE'      -AcValue 2   -DcValue 1
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'CPMINCORES'         -AcValue 100 -DcValue 50
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFAUTONOMOUSMODE' -AcValue 1   -DcValue 1
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'SYSCOOLPOL'         -AcValue 1   -DcValue 1
+$(Get-SharedCode)
+`$planName = '$($script:PlanUltraName)'
+`$preferred = '$($script:GuidUltimatePerformance)'
+`$fallback  = '$($script:GuidHighPerformance)'
+
+`$guid = Ensure-CustomPlan -PlanName `$planName -PreferredBaseGuid `$preferred -FallbackBaseGuid `$fallback
+powercfg /setactive `$guid | Out-Null
+
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMIN'    -AcValue 100 -DcValue 100
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMAX'    -AcValue 100 -DcValue 100
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFEPP'            -AcValue 0   -DcValue 0
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFBOOSTMODE'      -AcValue 2   -DcValue 2
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'CPMINCORES'         -AcValue 100 -DcValue 100
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFAUTONOMOUSMODE' -AcValue 1   -DcValue 1
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'SYSCOOLPOL'         -AcValue 1   -DcValue 1
+try { powercfg /setacvalueindex `$guid SUB_SLEEP STANDBYIDLE 0 | Out-Null } catch {}
+try { powercfg /setacvalueindex `$guid SUB_SLEEP HIBERNATEIDLE 0 | Out-Null } catch {}
+try { powercfg /setacvalueindex `$guid SUB_DISK DISKIDLE 0 | Out-Null } catch {}
+try { powercfg /setacvalueindex `$guid SUB_VIDEO VIDEOIDLE 0 | Out-Null } catch {}
+try { powercfg /setacvalueindex `$guid SUB_PCIEXPRESS ASPM 0 | Out-Null } catch {}
+try { powercfg /setactive `$guid | Out-Null } catch {}
+
+'Plano ativo: Lynext Ultra Performance'
 'CPU Ultra aplicado.'
 "@
 }
 
 function Get-CPULiteCode {
 @"
-function Set-PowerValueSafe {
-    param([string]`$Subgroup,[string]`$Setting,[int]`$AcValue,[int]`$DcValue)
-    try { powercfg /setacvalueindex scheme_current `$Subgroup `$Setting `$AcValue | Out-Null } catch {}
-    try { powercfg /setdcvalueindex scheme_current `$Subgroup `$Setting `$DcValue | Out-Null } catch {}
-    try { powercfg /setactive scheme_current | Out-Null } catch {}
-}
-function Test-ModernStandby {
-    try {
-        `$out = powercfg /a | Out-String
-        if (`$out -match "Standby \(S0 Low Power Idle\)") { return `$true }
-    }
-    catch {}
-    return `$false
-}
-function Get-IsLaptop {
-    try {
-        `$cs = Get-CimInstance Win32_ComputerSystem
-        if (`$cs.PCSystemType -in 2,3,4,8,9,10,14) { return `$true }
-    }
-    catch {}
-    return `$false
-}
-function Ensure-LitePlan {
-    try {
-        `$list = powercfg /list | Out-String
-        `$match = [regex]::Match(`$list, '([a-fA-F0-9-]{36}).*Lynext Lite')
-        if (`$match.Success) { return `$match.Groups[1].Value }
+$(Get-SharedCode)
+`$planName = '$($script:PlanLiteName)'
+`$guid = Ensure-CustomPlan -PlanName `$planName -PreferredBaseGuid '$($script:GuidBalanced)' -FallbackBaseGuid '$($script:GuidBalanced)'
+powercfg /setactive `$guid | Out-Null
 
-        `$dup = powercfg -duplicatescheme SCHEME_BALANCED 2>&1 | Out-String
-        if (`$dup -match '([a-fA-F0-9-]{36})') {
-            `$guid = `$Matches[1]
-            powercfg /changename `$guid 'Lynext Lite' | Out-Null
-            return `$guid
-        }
-    }
-    catch {}
-    return `$null
-}
-`$modern = Test-ModernStandby
-`$isLaptop = Get-IsLaptop
-if (`$modern -or `$isLaptop) {
-    powercfg /setactive SCHEME_BALANCED | Out-Null
-    'Balanced mantido por compatibilidade.'
-}
-else {
-    `$guid = Ensure-LitePlan
-    if (`$guid) {
-        powercfg /setactive `$guid | Out-Null
-        'Plano Lynext Lite ativado.'
-    }
-    else {
-        powercfg /setactive SCHEME_BALANCED | Out-Null
-        'Nao consegui ativar Lynext Lite. Usando Balanced.'
-    }
-}
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMIN'    -AcValue 5   -DcValue 5
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMAX'    -AcValue 100 -DcValue 100
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFEPP'            -AcValue 25  -DcValue 40
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFBOOSTMODE'      -AcValue 1   -DcValue 1
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'CPMINCORES'         -AcValue 50  -DcValue 25
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFAUTONOMOUSMODE' -AcValue 1   -DcValue 1
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'SYSCOOLPOL'         -AcValue 1   -DcValue 1
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMIN'    -AcValue 5   -DcValue 5
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMAX'    -AcValue 100 -DcValue 100
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFEPP'            -AcValue 25  -DcValue 40
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFBOOSTMODE'      -AcValue 1   -DcValue 1
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'CPMINCORES'         -AcValue 50  -DcValue 25
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFAUTONOMOUSMODE' -AcValue 1   -DcValue 1
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'SYSCOOLPOL'         -AcValue 1   -DcValue 1
+try { powercfg /setactive `$guid | Out-Null } catch {}
+
+'Plano ativo: Lynext Lite'
 'CPU Lynext Lite aplicado.'
 "@
 }
 
 function Get-CPUThermalCode {
 @"
-function Set-PowerValueSafe {
-    param([string]`$Subgroup,[string]`$Setting,[int]`$AcValue,[int]`$DcValue)
-    try { powercfg /setacvalueindex scheme_current `$Subgroup `$Setting `$AcValue | Out-Null } catch {}
-    try { powercfg /setdcvalueindex scheme_current `$Subgroup `$Setting `$DcValue | Out-Null } catch {}
-    try { powercfg /setactive scheme_current | Out-Null } catch {}
-}
-powercfg /setactive SCHEME_BALANCED | Out-Null
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMIN'    -AcValue 5  -DcValue 5
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMAX'    -AcValue 99 -DcValue 99
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFEPP'            -AcValue 60 -DcValue 80
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFBOOSTMODE'      -AcValue 0  -DcValue 0
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'CPMINCORES'         -AcValue 25 -DcValue 10
-Set-PowerValueSafe -Subgroup 'sub_processor' -Setting 'PERFAUTONOMOUSMODE' -AcValue 1  -DcValue 1
+$(Get-SharedCode)
+`$planName = '$($script:PlanThermalName)'
+`$guid = Ensure-CustomPlan -PlanName `$planName -PreferredBaseGuid '$($script:GuidBalanced)' -FallbackBaseGuid '$($script:GuidBalanced)'
+powercfg /setactive `$guid | Out-Null
+
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMIN'    -AcValue 5  -DcValue 5
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PROCTHROTTLEMAX'    -AcValue 99 -DcValue 99
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFEPP'            -AcValue 60 -DcValue 80
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFBOOSTMODE'      -AcValue 0  -DcValue 0
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'CPMINCORES'         -AcValue 25 -DcValue 10
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'PERFAUTONOMOUSMODE' -AcValue 1  -DcValue 1
+Set-PowerValueSafe -Scheme `$guid -Subgroup 'sub_processor' -Setting 'SYSCOOLPOL'         -AcValue 1  -DcValue 1
+try { powercfg /setactive `$guid | Out-Null } catch {}
+
+'Plano ativo: Lynext Thermal'
 'Modo termico / quieto aplicado.'
+"@
+}
+
+function Get-PowerResetCode {
+@"
+$(Get-SharedCode)
+`$backup = Get-Content -Path '$($script:BackupFile)' -Raw | ConvertFrom-Json
+if (-not `$backup) { throw 'Backup nao encontrado.' }
+
+if (`$backup.PowerSchemeGuid) {
+    try {
+        powercfg /setactive `$backup.PowerSchemeGuid | Out-Null
+        'Plano de energia restaurado pelo backup.'
+    }
+    catch {
+        'Nao consegui restaurar o plano salvo.'
+    }
+}
+else {
+    'Backup sem GUID de plano salvo.'
+}
 "@
 }
 
 function Get-WindowsUltraCode {
 @"
-function Set-RegDword {
-    param([string]`$Path,[string]`$Name,[UInt32]`$Value)
-    if (-not (Test-Path `$Path)) { New-Item -Path `$Path -Force | Out-Null }
-    New-ItemProperty -Path `$Path -Name `$Name -Value `$Value -PropertyType DWord -Force | Out-Null
-}
-Set-RegDword -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value 1
-Set-RegDword -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AllowAutoGameMode' -Value 1
-Set-RegDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -Value 0
-Set-RegDword -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Value 0
-Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Value 2
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Value 0xffffffff
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Value 10
-Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -Value 1
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'GPU Priority' -Value 8
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'Priority' -Value 6
+$(Get-SharedCode)
+Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value ([UInt32]1)
+Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AllowAutoGameMode' -Value ([UInt32]1)
+Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -Value ([UInt32]0)
+Set-RegDwordSafe -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Value ([UInt32]0)
+Set-RegDwordSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Value ([UInt32]2)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Value ([UInt32]4294967295)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Value ([UInt32]10)
+Set-RegDwordSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -Value ([UInt32]1)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'GPU Priority' -Value ([UInt32]8)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'Priority' -Value ([UInt32]6)
 'Windows Ultra aplicado.'
 'Reinicio recomendado para HAGS.'
 "@
@@ -666,21 +784,17 @@ Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedi
 
 function Get-WindowsLiteCode {
 @"
-function Set-RegDword {
-    param([string]`$Path,[string]`$Name,[UInt32]`$Value)
-    if (-not (Test-Path `$Path)) { New-Item -Path `$Path -Force | Out-Null }
-    New-ItemProperty -Path `$Path -Name `$Name -Value `$Value -PropertyType DWord -Force | Out-Null
-}
-Set-RegDword -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value 1
-Set-RegDword -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AllowAutoGameMode' -Value 1
-Set-RegDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -Value 0
-Set-RegDword -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Value 0
-Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Value 2
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Value 10
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Value 20
-Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -Value 1
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'GPU Priority' -Value 8
-Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'Priority' -Value 6
+$(Get-SharedCode)
+Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value ([UInt32]1)
+Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AllowAutoGameMode' -Value ([UInt32]1)
+Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -Value ([UInt32]0)
+Set-RegDwordSafe -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Value ([UInt32]0)
+Set-RegDwordSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Value ([UInt32]2)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Value ([UInt32]10)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Value ([UInt32]20)
+Set-RegDwordSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -Value ([UInt32]1)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'GPU Priority' -Value ([UInt32]8)
+Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' -Name 'Priority' -Value ([UInt32]6)
 'Windows Lite aplicado.'
 'Reinicio recomendado para HAGS.'
 "@
@@ -688,53 +802,35 @@ Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedi
 
 function Get-WindowsResetCode {
 @"
-function Set-RegDword {
-    param([string]`$Path,[string]`$Name,[UInt32]`$Value)
-    if (-not (Test-Path `$Path)) { New-Item -Path `$Path -Force | Out-Null }
-    New-ItemProperty -Path `$Path -Name `$Name -Value `$Value -PropertyType DWord -Force | Out-Null
-}
-function Remove-RegValue {
-    param([string]`$Path,[string]`$Name)
-    try {
-        if (Test-Path `$Path) { Remove-ItemProperty -Path `$Path -Name `$Name -Force -ErrorAction SilentlyContinue }
-    }
-    catch {}
-}
+$(Get-SharedCode)
 `$backup = Get-Content -Path '$($script:BackupFile)' -Raw | ConvertFrom-Json
 if (-not `$backup) { throw 'Backup nao encontrado.' }
-if (`$backup.PowerSchemeGuid) { try { powercfg /setactive `$backup.PowerSchemeGuid | Out-Null } catch {} }
-if (`$null -ne `$backup.Registry.AutoGameModeEnabled) { Set-RegDword -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value ([UInt32]`$backup.Registry.AutoGameModeEnabled) }
-if (`$null -ne `$backup.Registry.AllowAutoGameMode) { Set-RegDword -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AllowAutoGameMode' -Value ([UInt32]`$backup.Registry.AllowAutoGameMode) }
-if (`$null -ne `$backup.Registry.AppCaptureEnabled) { Set-RegDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -Value ([UInt32]`$backup.Registry.AppCaptureEnabled) }
-if (`$null -ne `$backup.Registry.GameDVR_Enabled) { Set-RegDword -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Value ([UInt32]`$backup.Registry.GameDVR_Enabled) }
-if (`$null -ne `$backup.Registry.HwSchMode) { Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Value ([UInt32]`$backup.Registry.HwSchMode) }
-if (`$null -ne `$backup.Registry.SystemResponsiveness) { Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Value ([UInt32]`$backup.Registry.SystemResponsiveness) }
-if (`$null -ne `$backup.Registry.PowerThrottlingOff) { Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -Value ([UInt32]`$backup.Registry.PowerThrottlingOff) }
+
+if (`$null -ne `$backup.Registry.AutoGameModeEnabled) { Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value ([UInt32]`$backup.Registry.AutoGameModeEnabled) }
+if (`$null -ne `$backup.Registry.AllowAutoGameMode) { Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AllowAutoGameMode' -Value ([UInt32]`$backup.Registry.AllowAutoGameMode) }
+if (`$null -ne `$backup.Registry.AppCaptureEnabled) { Set-RegDwordSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -Value ([UInt32]`$backup.Registry.AppCaptureEnabled) }
+if (`$null -ne `$backup.Registry.GameDVR_Enabled) { Set-RegDwordSafe -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Value ([UInt32]`$backup.Registry.GameDVR_Enabled) }
+if (`$null -ne `$backup.Registry.HwSchMode) { Set-RegDwordSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'HwSchMode' -Value ([UInt32]`$backup.Registry.HwSchMode) }
+if (`$null -ne `$backup.Registry.SystemResponsiveness) { Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -Value ([UInt32]`$backup.Registry.SystemResponsiveness) }
+if (`$null -ne `$backup.Registry.PowerThrottlingOff) { Set-RegDwordSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -Value ([UInt32]`$backup.Registry.PowerThrottlingOff) }
+
 if (`$null -ne `$backup.Registry.NetworkThrottlingIndex) {
     try {
         `$v = [UInt32]`$backup.Registry.NetworkThrottlingIndex
-        Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Value `$v
+        Set-RegDwordSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -Value `$v
     }
     catch {
         Remove-RegValue -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex'
     }
 }
+
 'Windows restaurado pelo backup.'
 "@
 }
 
 function Get-NvidiaUltraCode {
 @"
-function Get-NvidiaSmiPath {
-    `$path1 = Join-Path `$env:ProgramFiles 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
-    if (Test-Path `$path1) { return `$path1 }
-    `$pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-    if (`$pf86) {
-        `$path2 = Join-Path `$pf86 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
-        if (Test-Path `$path2) { return `$path2 }
-    }
-    return `$null
-}
+$(Get-SharedCode)
 `$nvidiaSmi = Get-NvidiaSmiPath
 if (-not `$nvidiaSmi) {
     'nvidia-smi nao encontrado. Aplicacao automatica limitada.'
@@ -763,16 +859,7 @@ catch {
 
 function Get-NvidiaLiteCode {
 @"
-function Get-NvidiaSmiPath {
-    `$path1 = Join-Path `$env:ProgramFiles 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
-    if (Test-Path `$path1) { return `$path1 }
-    `$pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-    if (`$pf86) {
-        `$path2 = Join-Path `$pf86 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
-        if (Test-Path `$path2) { return `$path2 }
-    }
-    return `$null
-}
+$(Get-SharedCode)
 `$backup = Get-Content -Path '$($script:BackupFile)' -Raw | ConvertFrom-Json
 `$nvidiaSmi = Get-NvidiaSmiPath
 if (`$nvidiaSmi -and `$backup -and `$backup.Nvidia.DefaultPowerLimit) {
@@ -796,16 +883,7 @@ else {
 
 function Get-NvidiaResetCode {
 @"
-function Get-NvidiaSmiPath {
-    `$path1 = Join-Path `$env:ProgramFiles 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
-    if (Test-Path `$path1) { return `$path1 }
-    `$pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-    if (`$pf86) {
-        `$path2 = Join-Path `$pf86 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
-        if (Test-Path `$path2) { return `$path2 }
-    }
-    return `$null
-}
+$(Get-SharedCode)
 `$backup = Get-Content -Path '$($script:BackupFile)' -Raw | ConvertFrom-Json
 `$nvidiaSmi = Get-NvidiaSmiPath
 if (-not `$nvidiaSmi) {
@@ -830,38 +908,7 @@ else {
 
 function Get-SummaryCode {
 @"
-function Get-ActivePowerSchemeGuid {
-    `$line = powercfg /getactivescheme
-    if (`$line -match '([a-fA-F0-9-]{36})') { return `$Matches[1] }
-    return `$null
-}
-function Test-ModernStandby {
-    try {
-        `$out = powercfg /a | Out-String
-        if (`$out -match "Standby \(S0 Low Power Idle\)") { return `$true }
-    }
-    catch {}
-    return `$false
-}
-function Get-GpuVendor {
-    try {
-        `$gpuNames = Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name
-        `$all = (`$gpuNames -join " | ")
-        if (`$all -match "NVIDIA") { return "NVIDIA" }
-        if (`$all -match "AMD|Radeon") { return "AMD" }
-        if (`$all -match "Intel") { return "Intel" }
-    }
-    catch {}
-    return "Unknown"
-}
-function Get-IsLaptop {
-    try {
-        `$cs = Get-CimInstance Win32_ComputerSystem
-        if (`$cs.PCSystemType -in 2,3,4,8,9,10,14) { return `$true }
-    }
-    catch {}
-    return `$false
-}
+$(Get-SharedCode)
 `$os = Get-CimInstance Win32_OperatingSystem
 `$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 `$gpus = Get-CimInstance Win32_VideoController
@@ -871,6 +918,16 @@ function Get-IsLaptop {
 'Notebook: ' + (Get-IsLaptop)
 'Modern Standby: ' + (Test-ModernStandby)
 'Plano ativo: ' + (Get-ActivePowerSchemeGuid)
+''
+'Planos atuais:'
+foreach (`$plan in Get-PowerSchemes) {
+    if (`$plan.IsActive) {
+        ' * ' + `$plan.Name + ' | ' + `$plan.Guid
+    }
+    else {
+        ' - ' + `$plan.Name + ' | ' + `$plan.Guid
+    }
+}
 ''
 'GPUs detectadas:'
 foreach (`$gpu in `$gpus) {
@@ -1006,7 +1063,7 @@ $toolTip.ShowAlways = $true
 # TAB MODOS
 # =========================================================
 Add-SectionLabel $tabModes "MODOS PRINCIPAIS" 18 16
-Add-SoftLabel $tabModes "Use os presets prontos. Ultra e agressivo. Lite busca equilibrio." 18 42 520 32
+Add-SoftLabel $tabModes "Use os presets prontos. Ultra e agressivo. Lite busca equilibrio. Reset restaura energia, Windows e GPU pelo backup." 18 42 520 40
 
 $btnUltra = New-LynextButton "LYNEXT ULTRA PERFORMANCE" 18 90 250 50
 $btnLite  = New-LynextButton "LYNEXT LITE" 285 90 250 50
@@ -1015,13 +1072,13 @@ $btnInfo  = New-LynextButton "RESUMO DO SISTEMA" 285 155 250 46
 $tabModes.Controls.AddRange(@($btnUltra,$btnLite,$btnReset,$btnInfo))
 
 Add-SectionLabel $tabModes "DESCRICAO" 18 235
-Add-SoftLabel $tabModes "Ultra: foco em desempenho maximo. Lite: desempenho com mais controle de consumo e temperatura." 18 262 520 52
+Add-SoftLabel $tabModes "Ultra: plano Lynext Ultra + Windows Ultra. Lite: plano Lynext Lite + Windows Lite. Thermal ficou separado apenas na aba CPU / Energia." 18 262 520 52
 
 # =========================================================
 # TAB CPU
 # =========================================================
 Add-SectionLabel $tabCPU "CPU / ENERGIA" 18 16
-Add-SoftLabel $tabCPU "Ajustes de plano de energia e comportamento do processador." 18 42 520 30
+Add-SoftLabel $tabCPU "Ajustes separados por plano, sem duplicar opcoes e sem cair escondido no Balanced quando voce escolhe Ultra." 18 42 520 40
 
 $btnCpuUltra   = New-LynextButton "CPU ULTRA" 18 90 170 42
 $btnCpuLite    = New-LynextButton "CPU LITE" 198 90 170 42
@@ -1082,9 +1139,9 @@ $toolTip.SetToolTip($btnLite, "Aplica CPU Lite + Windows Lite + NVIDIA Lite quan
 $toolTip.SetToolTip($btnReset, "Restaura pelo backup salvo.")
 $toolTip.SetToolTip($btnInfo, "Mostra resumo do sistema no painel de saida.")
 
-$toolTip.SetToolTip($btnCpuUltra, "Modo agressivo de energia e boost.")
-$toolTip.SetToolTip($btnCpuLite, "Modo equilibrado para desempenho com menos estresse.")
-$toolTip.SetToolTip($btnCpuThermal, "Modo mais calmo, focado em temperatura e ruido.")
+$toolTip.SetToolTip($btnCpuUltra, "Cria ou reaproveita o plano Lynext Ultra Performance e ativa ele.")
+$toolTip.SetToolTip($btnCpuLite, "Cria ou reaproveita o plano Lynext Lite e ativa ele.")
+$toolTip.SetToolTip($btnCpuThermal, "Cria ou reaproveita o plano Lynext Thermal e ativa ele.")
 
 $toolTip.SetToolTip($btnWinUltra, "Game Mode ON, DVR OFF, HAGS ON e prioridades mais agressivas.")
 $toolTip.SetToolTip($btnWinLite, "Game Mode ON, DVR OFF, HAGS ON e prioridades mais leves.")
@@ -1200,6 +1257,9 @@ $btnReset.Add_Click({
     }
 
     $code = @"
+$(Get-PowerResetCode)
+
+'---'
 $(Get-WindowsResetCode)
 
 '---'
