@@ -549,6 +549,170 @@ function Restore-LynextBackup {
     'Reset geral concluido.'
 }
 
+
+function Format-LynextState {
+    param(
+        [string]$Name,
+        [object]$Value,
+        [scriptblock]$Describe
+    )
+    try {
+        $desc = & $Describe $Value
+        "{0}: {1} (valor: {2})" -f $Name, $desc, ($(if ($null -eq $Value) { 'ausente' } else { $Value }))
+    }
+    catch {
+        "{0}: nao identificado (valor: {1})" -f $Name, ($(if ($null -eq $Value) { 'ausente' } else { $Value }))
+    }
+}
+
+function Get-LynextManualState {
+    '=== Leitura manual dos ajustes ==='
+    ''
+    $activePlan = Get-PowerSchemes | Where-Object { $_.IsActive } | Select-Object -First 1
+    if ($activePlan) {
+        "Plano de energia ativo: $($activePlan.Name) | $($activePlan.Guid)"
+    }
+    else {
+        'Plano de energia ativo: nao identificado'
+    }
+
+    Format-LynextState 'Game Mode automatico' (Get-RegValue 'HKCU:\Software\Microsoft\GameBar' 'AutoGameModeEnabled') {
+        param($v)
+        if ($v -eq 1) { 'ATIVO' } elseif ($v -eq 0) { 'DESATIVADO' } else { 'PADRAO / AUSENTE' }
+    }
+
+    Format-LynextState 'Permitir Game Mode' (Get-RegValue 'HKCU:\Software\Microsoft\GameBar' 'AllowAutoGameMode') {
+        param($v)
+        if ($v -eq 1) { 'ATIVO' } elseif ($v -eq 0) { 'DESATIVADO' } else { 'PADRAO / AUSENTE' }
+    }
+
+    Format-LynextState 'Captura Xbox/Game DVR' (Get-RegValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' 'AppCaptureEnabled') {
+        param($v)
+        if ($v -eq 0) { 'DESATIVADO / OTIMIZADO' } elseif ($v -eq 1) { 'ATIVO' } else { 'PADRAO / AUSENTE' }
+    }
+
+    Format-LynextState 'GameDVR ConfigStore' (Get-RegValue 'HKCU:\System\GameConfigStore' 'GameDVR_Enabled') {
+        param($v)
+        if ($v -eq 0) { 'DESATIVADO / OTIMIZADO' } elseif ($v -eq 1) { 'ATIVO' } else { 'PADRAO / AUSENTE' }
+    }
+
+    Format-LynextState 'HAGS / Agendamento GPU' (Get-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' 'HwSchMode') {
+        param($v)
+        if ($v -eq 2) { 'ATIVO' } elseif ($v -eq 1) { 'DESATIVADO' } else { 'PADRAO / AUTO' }
+    }
+
+    Format-LynextState 'Power Throttling' (Get-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' 'PowerThrottlingOff') {
+        param($v)
+        if ($v -eq 1) { 'DESATIVADO / PERFORMANCE' } elseif ($v -eq 0) { 'ATIVO / ECONOMIA' } else { 'PADRAO / AUSENTE' }
+    }
+
+    Format-LynextState 'Network Throttling' (Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'NetworkThrottlingIndex') {
+        param($v)
+        if ([UInt32]$v -eq [UInt32]4294967295) { 'ULTRA / DESATIVADO' } elseif ($v -eq 10) { 'PADRAO WINDOWS' } else { 'PERSONALIZADO' }
+    }
+
+    Format-LynextState 'System Responsiveness' (Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'SystemResponsiveness') {
+        param($v)
+        if ($v -eq 10) { 'ULTRA / JOGOS' } elseif ($v -eq 20) { 'PADRAO / MODERADO' } elseif ($null -eq $v) { 'PADRAO / AUSENTE' } else { 'PERSONALIZADO' }
+    }
+
+    Format-LynextState 'Games GPU Priority' (Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'GPU Priority') {
+        param($v)
+        if ($v -eq 8) { 'ULTRA' } elseif ($null -eq $v) { 'PADRAO / AUSENTE' } else { 'PERSONALIZADO' }
+    }
+
+    Format-LynextState 'Games Priority' (Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'Priority') {
+        param($v)
+        if ($v -eq 6) { 'ULTRA' } elseif ($null -eq $v) { 'PADRAO / AUSENTE' } else { 'PERSONALIZADO' }
+    }
+
+    ''
+    'Obs: HAGS pode precisar reiniciar o PC para refletir totalmente.'
+}
+
+function Set-LynextManualTweak {
+    param(
+        [ValidateSet(
+            'GameModeOn','GameModeOff',
+            'GameDvrOff','GameDvrOn',
+            'HagsOn','HagsOff',
+            'PowerThrottlingPerformance','PowerThrottlingDefault',
+            'NetworkUltra','NetworkDefault',
+            'ResponsivenessUltra','ResponsivenessDefault',
+            'GamesPriorityUltra','GamesPriorityDefault'
+        )]
+        [string]$Tweak
+    )
+
+    switch ($Tweak) {
+        'GameModeOn' {
+            Set-RegDwordSafe 'HKCU:\Software\Microsoft\GameBar' 'AutoGameModeEnabled' 1
+            Set-RegDwordSafe 'HKCU:\Software\Microsoft\GameBar' 'AllowAutoGameMode' 1
+            'Game Mode ativado.'
+        }
+        'GameModeOff' {
+            Set-RegDwordSafe 'HKCU:\Software\Microsoft\GameBar' 'AutoGameModeEnabled' 0
+            Set-RegDwordSafe 'HKCU:\Software\Microsoft\GameBar' 'AllowAutoGameMode' 0
+            'Game Mode desativado.'
+        }
+        'GameDvrOff' {
+            Set-RegDwordSafe 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' 'AppCaptureEnabled' 0
+            Set-RegDwordSafe 'HKCU:\System\GameConfigStore' 'GameDVR_Enabled' 0
+            'Game DVR / captura em segundo plano desativado.'
+        }
+        'GameDvrOn' {
+            Set-RegDwordSafe 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' 'AppCaptureEnabled' 1
+            Set-RegDwordSafe 'HKCU:\System\GameConfigStore' 'GameDVR_Enabled' 1
+            'Game DVR / captura em segundo plano ativado.'
+        }
+        'HagsOn' {
+            Set-RegDwordSafe 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' 'HwSchMode' 2
+            'HAGS ativado. Reinicio recomendado.'
+        }
+        'HagsOff' {
+            Set-RegDwordSafe 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' 'HwSchMode' 1
+            'HAGS desativado. Reinicio recomendado.'
+        }
+        'PowerThrottlingPerformance' {
+            Set-RegDwordSafe 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' 'PowerThrottlingOff' 1
+            'Power Throttling desativado para priorizar performance.'
+        }
+        'PowerThrottlingDefault' {
+            Remove-RegValueSafe 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' 'PowerThrottlingOff'
+            'Power Throttling restaurado para o padrao do Windows.'
+        }
+        'NetworkUltra' {
+            Set-RegDwordSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'NetworkThrottlingIndex' ([UInt32]4294967295)
+            'Network Throttling ajustado para Ultra.'
+        }
+        'NetworkDefault' {
+            Set-RegDwordSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'NetworkThrottlingIndex' 10
+            'Network Throttling restaurado para padrao/moderado.'
+        }
+        'ResponsivenessUltra' {
+            Set-RegDwordSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'SystemResponsiveness' 10
+            'System Responsiveness ajustado para Ultra.'
+        }
+        'ResponsivenessDefault' {
+            Set-RegDwordSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'SystemResponsiveness' 20
+            'System Responsiveness restaurado para padrao/moderado.'
+        }
+        'GamesPriorityUltra' {
+            Set-RegDwordSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'GPU Priority' 8
+            Set-RegDwordSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'Priority' 6
+            'Prioridades da tarefa Games ajustadas para Ultra.'
+        }
+        'GamesPriorityDefault' {
+            Remove-RegValueSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'GPU Priority'
+            Remove-RegValueSafe 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'Priority'
+            'Prioridades da tarefa Games removidas para o padrao do Windows.'
+        }
+    }
+
+    ''
+    Get-LynextManualState
+}
+
 function Show-LynextSummary {
     try { $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop } catch { $os = $null }
     try { $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1 } catch { $cpu = $null }
@@ -903,8 +1067,9 @@ $tabs.Font = $font.Text
 $tabPresets = New-Tab 'Presets' 'Presets principais' 'Use estes botoes para aplicar um pacote pronto. Ultra prioriza FPS e resposta; Lite equilibra desempenho e consumo; Termico reduz calor e ruido.'
 $tabTuning = New-Tab 'Energia + Windows' 'Ajustes separados' 'Aqui voce mexe em uma parte por vez: plano de energia da CPU ou ajustes de jogos do Windows.'
 $tabGpu = New-Tab 'GPU' 'GPU e politicas' 'NVIDIA usa nvidia-smi quando disponivel. AMD e Intel ficam com diagnostico e recomendacoes para evitar tuning arriscado.'
+$tabManual = New-Tab 'Manual' 'Ajustes manuais' 'Leia o estado atual do PC e ative/desative cada tweak separadamente. Ideal para manutencao fina em PC de cliente.'
 $tabBackup = New-Tab 'Backup' 'Backup, reset e logs' 'Salve o estado atual antes dos presets. O reset volta energia, Windows e NVIDIA para o que foi salvo.'
-$tabs.TabPages.AddRange(@($tabPresets.Page, $tabTuning.Page, $tabGpu.Page, $tabBackup.Page))
+$tabs.TabPages.AddRange(@($tabPresets.Page, $tabTuning.Page, $tabGpu.Page, $tabManual.Page, $tabBackup.Page))
 $split.Panel1.Controls.Add($tabs)
 
 $outPanel = New-Object Windows.Forms.TableLayoutPanel
@@ -1101,6 +1266,84 @@ Intel:
 O tuning automatico pesado fica limitado a NVIDIA por depender do nvidia-smi.
 "@ -Clear
     Set-LynextStatus 'Guia AMD / Intel exibido.' 'ok'
+}))
+
+
+# -------------------------
+# Manual
+# -------------------------
+$tabManual.Flow.Controls.Add((New-ActionButton 'Verificar ajustes manuais' 'Le o PC e mostra se cada ajuste esta ativo, desativado, padrao ou personalizado.' {
+    Start-LynextTask 'Verificar ajustes manuais' 'Get-LynextManualState'
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game Mode: Ativar' 'Ativa AutoGameModeEnabled e AllowAutoGameMode.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game Mode: Ativar' "Set-LynextManualTweak -Tweak GameModeOn"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game Mode: Desativar' 'Desativa AutoGameModeEnabled e AllowAutoGameMode.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game Mode: Desativar' "Set-LynextManualTweak -Tweak GameModeOff"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game DVR: Desativar' 'Desativa captura/gravação em segundo plano para reduzir overhead.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game DVR: Desativar' "Set-LynextManualTweak -Tweak GameDvrOff"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game DVR: Ativar' 'Reativa captura/gravação em segundo plano do Windows/Xbox.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game DVR: Ativar' "Set-LynextManualTweak -Tweak GameDvrOn"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'HAGS: Ativar' 'Ativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'HAGS: Ativar' "Set-LynextManualTweak -Tweak HagsOn"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'HAGS: Desativar' 'Desativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'HAGS: Desativar' "Set-LynextManualTweak -Tweak HagsOff"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Power Throttling: Performance' 'Desativa Power Throttling via registro para priorizar desempenho.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Power Throttling: Performance' "Set-LynextManualTweak -Tweak PowerThrottlingPerformance"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Power Throttling: Padrao' 'Remove o valor Lynext e deixa o Windows controlar Power Throttling.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Power Throttling: Padrao' "Set-LynextManualTweak -Tweak PowerThrottlingDefault"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Network Throttling: Ultra' 'Define NetworkThrottlingIndex como 0xffffffff.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Network Throttling: Ultra' "Set-LynextManualTweak -Tweak NetworkUltra"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Network Throttling: Padrao' 'Define NetworkThrottlingIndex como 10.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Network Throttling: Padrao' "Set-LynextManualTweak -Tweak NetworkDefault"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Responsiveness: Ultra' 'Define SystemResponsiveness como 10.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Responsiveness: Ultra' "Set-LynextManualTweak -Tweak ResponsivenessUltra"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Responsiveness: Padrao' 'Define SystemResponsiveness como 20.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Responsiveness: Padrao' "Set-LynextManualTweak -Tweak ResponsivenessDefault"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Prioridade Games: Ultra' 'Define GPU Priority 8 e Priority 6 para a tarefa Games.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Prioridade Games: Ultra' "Set-LynextManualTweak -Tweak GamesPriorityUltra"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Prioridade Games: Padrao' 'Remove os valores Lynext para voltar ao padrao do Windows.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Prioridade Games: Padrao' "Set-LynextManualTweak -Tweak GamesPriorityDefault"
 }))
 
 $tabBackup.Flow.Controls.Add((New-ActionButton 'Criar / atualizar backup' 'Guarda o estado atual para conseguir voltar depois com Reset geral.' {
