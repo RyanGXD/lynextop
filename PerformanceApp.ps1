@@ -1,4 +1,4 @@
-#requires -version 5.1
+#ryangxd 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -63,6 +63,7 @@ $font = @{
 
 $script:Task = $null
 $script:IsBusy = $false
+$script:LastModeCheck = [datetime]::MinValue
 
 function Write-LynextLog {
     param([string]$Text)
@@ -100,11 +101,6 @@ function Set-LynextStatus {
         'error' { $script:lblStatus.ForeColor = $ui.Error }
         default { $script:lblStatus.ForeColor = $ui.Text }
     }
-}
-
-function ConvertTo-EncodedCommand {
-    param([string]$Code)
-    return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Code))
 }
 
 function Escape-SingleQuote {
@@ -539,7 +535,19 @@ function Show-LynextSummary {
     'GPU principal: ' + (Get-GpuVendor)
     'Notebook: ' + (Get-IsLaptop)
     'Modern Standby: ' + (Test-ModernStandby)
-    'Plano ativo: ' + (Get-ActivePowerSchemeGuid)
+    $activePlan = Get-PowerSchemes | Where-Object { $_.IsActive } | Select-Object -First 1
+    if ($activePlan) {
+        'Plano ativo: ' + $activePlan.Name + ' | ' + $activePlan.Guid
+        switch ($activePlan.Name) {
+            'Lynext Ultra Performance' { 'Modo Lynext detectado: Ultra' }
+            'Lynext Lite'              { 'Modo Lynext detectado: Lite' }
+            'Lynext Thermal'           { 'Modo Lynext detectado: Termico / quieto' }
+            default                    { 'Modo Lynext detectado: nenhum preset Lynext ativo' }
+        }
+    }
+    else {
+        'Plano ativo: nao identificado'
+    }
     ''
     'Planos:'
     foreach ($plan in Get-PowerSchemes) {
@@ -563,6 +571,46 @@ $Body
 "@
 }
 
+function Get-LocalActivePowerPlan {
+    try {
+        $line = powercfg /getactivescheme | Out-String
+        if ($line -match '([a-fA-F0-9-]{36})\s+\((.*?)\)') {
+            return [pscustomobject]@{ Guid = $Matches[1]; Name = $Matches[2].Trim() }
+        }
+    }
+    catch {}
+    return $null
+}
+
+function Get-LocalActiveModeText {
+    $plan = Get-LocalActivePowerPlan
+    if (-not $plan) { return 'Modo ativo: nao identificado' }
+
+    switch -Regex ($plan.Name) {
+        '^Lynext Ultra Performance$' { return 'Modo ativo: Ultra' }
+        '^Lynext Lite$'              { return 'Modo ativo: Lite' }
+        '^Lynext Thermal$'           { return 'Modo ativo: Termico' }
+        'High performance|Alto desempenho' { return 'Modo ativo: Alto desempenho do Windows' }
+        'Balanced|Equilibrado'       { return 'Modo ativo: Equilibrado do Windows' }
+        default                      { return "Modo ativo: $($plan.Name)" }
+    }
+}
+
+function Update-ActiveModeLabel {
+    if (-not $script:lblMode) { return }
+    $text = Get-LocalActiveModeText
+    $script:lblMode.Text = $text
+    if ($text -match 'Ultra|Lite|Termico') {
+        $script:lblMode.ForeColor = $ui.Accent
+    }
+    elseif ($text -match 'nao identificado') {
+        $script:lblMode.ForeColor = $ui.Warn
+    }
+    else {
+        $script:lblMode.ForeColor = $ui.Muted
+    }
+}
+
 function Start-LynextTask {
     param(
         [string]$Name,
@@ -580,7 +628,8 @@ function Start-LynextTask {
 
     $outFile = Join-Path $script:LogDir ("task_out_{0}.txt" -f [guid]::NewGuid().ToString('N'))
     $errFile = Join-Path $script:LogDir ("task_err_{0}.txt" -f [guid]::NewGuid().ToString('N'))
-    $encoded = ConvertTo-EncodedCommand (New-TaskCode $Body)
+    $taskFile = Join-Path $script:LogDir ("task_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+    New-TaskCode $Body | Set-Content -Path $taskFile -Encoding UTF8
 
     Add-Output ">>> $Name" -Clear
     Set-LynextStatus "Executando: $Name" 'busy'
@@ -590,7 +639,7 @@ function Start-LynextTask {
     $script:IsBusy = $true
 
     $proc = Start-Process -FilePath (Get-LynextPowerShell) `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded" `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$taskFile`"" `
         -RedirectStandardOutput $outFile `
         -RedirectStandardError $errFile `
         -WindowStyle Hidden `
@@ -601,6 +650,7 @@ function Start-LynextTask {
         Process = $proc
         OutFile = $outFile
         ErrFile = $errFile
+        TaskFile = $taskFile
         LastOutLen = 0
         LastErrLen = 0
     }
@@ -649,6 +699,7 @@ function Poll-LynextTask {
     $script:Progress.Style = [Windows.Forms.ProgressBarStyle]::Blocks
     $script:IsBusy = $false
     $script:Task = $null
+    Update-ActiveModeLabel
 }
 
 # =========================================================
@@ -685,7 +736,16 @@ function New-ActionButton {
     $btn.Font = $font.Btn
     $btn.Cursor = [Windows.Forms.Cursors]::Hand
     $btn.UseVisualStyleBackColor = $false
-    $btn.Add_Click($OnClick)
+    $btn.Add_Click({
+        try {
+            & $OnClick
+        }
+        catch {
+            Add-Output ("Falha ao executar acao: " + $_.Exception.Message) -Clear
+            Set-LynextStatus 'Acao falhou. Veja a saida.' 'error'
+            Write-LynextLog ("UI ERROR: " + $_.Exception.Message)
+        }
+    }.GetNewClosure())
     if ($Hint) { $script:Tip.SetToolTip($btn, $Hint) }
     return $btn
 }
@@ -781,11 +841,27 @@ $script:Tip.ReshowDelay = 100
 $tabs = New-Object Windows.Forms.TabControl
 $tabs.Dock = 'Fill'
 $tabs.Font = $font.Text
+$tabs.DrawMode = [Windows.Forms.TabDrawMode]::OwnerDrawFixed
+$tabs.ItemSize = New-Object Drawing.Size(140, 28)
+$tabs.SizeMode = 'Fixed'
+$tabs.Add_DrawItem({
+    param($sender, $e)
+    $tab = $sender.TabPages[$e.Index]
+    $selected = (($e.State -band [Windows.Forms.DrawItemState]::Selected) -ne 0)
+    $back = if ($selected) { $ui.Panel } else { $ui.Panel2 }
+    $fore = if ($selected) { $ui.Accent } else { $ui.Text }
+    $brush = New-Object Drawing.SolidBrush($back)
+    $textBrush = New-Object Drawing.SolidBrush($fore)
+    $e.Graphics.FillRectangle($brush, $e.Bounds)
+    $e.Graphics.DrawString($tab.Text, $font.Text, $textBrush, ($e.Bounds.X + 10), ($e.Bounds.Y + 7))
+    $brush.Dispose()
+    $textBrush.Dispose()
+})
 
-$tabPresets = New-Tab 'Presets' 'Presets principais' 'Aplique os modos completos sem navegar por categorias repetidas.'
-$tabTuning = New-Tab 'Energia + Windows' 'Ajustes separados' 'Use quando quiser alterar somente plano de energia ou somente recursos do Windows.'
-$tabGpu = New-Tab 'GPU' 'GPU e politicas' 'NVIDIA tem ajustes automaticos quando nvidia-smi esta disponivel. AMD e Intel ficam em informacao segura.'
-$tabBackup = New-Tab 'Backup' 'Backup, reset e logs' 'Crie backup antes de aplicar presets e use reset para voltar ao estado salvo.'
+$tabPresets = New-Tab 'Presets' 'Presets principais' 'Use estes botoes para aplicar um pacote pronto. Ultra prioriza FPS e resposta; Lite equilibra desempenho e consumo; Termico reduz calor e ruido.'
+$tabTuning = New-Tab 'Energia + Windows' 'Ajustes separados' 'Aqui voce mexe em uma parte por vez: plano de energia da CPU ou ajustes de jogos do Windows.'
+$tabGpu = New-Tab 'GPU' 'GPU e politicas' 'NVIDIA usa nvidia-smi quando disponivel. AMD e Intel ficam com diagnostico e recomendacoes para evitar tuning arriscado.'
+$tabBackup = New-Tab 'Backup' 'Backup, reset e logs' 'Salve o estado atual antes dos presets. O reset volta energia, Windows e NVIDIA para o que foi salvo.'
 $tabs.TabPages.AddRange(@($tabPresets.Page, $tabTuning.Page, $tabGpu.Page, $tabBackup.Page))
 $split.Panel1.Controls.Add($tabs)
 
@@ -815,15 +891,18 @@ $split.Panel2.Controls.Add($outPanel)
 
 $footer = New-Object Windows.Forms.TableLayoutPanel
 $footer.Dock = 'Fill'
-$footer.ColumnCount = 3
+$footer.ColumnCount = 4
 $footer.RowCount = 1
 $footer.BackColor = $ui.Bg
-$footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 260))) | Out-Null
+$footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 250))) | Out-Null
+$footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 240))) | Out-Null
 $footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 260))) | Out-Null
 $footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Percent, 100))) | Out-Null
 
 $script:lblStatus = New-Label 'Status: Pronto' $font.Btn $ui.Accent
 $script:lblStatus.Dock = 'Fill'
+$script:lblMode = New-Label 'Modo ativo: verificando...' $font.Btn $ui.Warn
+$script:lblMode.Dock = 'Fill'
 $script:Progress = New-Object Windows.Forms.ProgressBar
 $script:Progress.Dock = 'Fill'
 $script:Progress.Margin = New-Object Windows.Forms.Padding(0, 7, 12, 7)
@@ -832,8 +911,9 @@ $logLabel = New-Label ("Log: $script:LogFile") $font.Text $ui.Muted
 $logLabel.Dock = 'Fill'
 
 $footer.Controls.Add($script:lblStatus, 0, 0)
-$footer.Controls.Add($script:Progress, 1, 0)
-$footer.Controls.Add($logLabel, 2, 0)
+$footer.Controls.Add($script:lblMode, 1, 0)
+$footer.Controls.Add($script:Progress, 2, 0)
+$footer.Controls.Add($logLabel, 3, 0)
 
 $root.Controls.Add($header, 0, 0)
 $root.Controls.Add($split, 0, 1)
@@ -845,7 +925,7 @@ $script:Form.Controls.Add($root)
 # =========================================================
 $backupPath = Escape-SingleQuote $script:BackupFile
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Ultra completo' 'Plano Ultra + Windows Ultra + NVIDIA Ultra quando suportado.' {
+$tabPresets.Flow.Controls.Add((New-ActionButton 'Ultra completo' 'Maximo desempenho: cria/ativa plano Ultra, desliga DVR, liga Game Mode/HAGS e tenta elevar limite NVIDIA.' {
     if (-not (Test-Path $script:BackupFile)) {
         Start-LynextTask 'Criar backup inicial' "Save-LynextBackup -BackupFile '$backupPath'"
         return
@@ -858,7 +938,7 @@ if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Ultra -BackupFile
 "@ -Confirm -ConfirmMessage 'O modo Ultra e mais agressivo e pode aumentar consumo/temperatura. Deseja continuar?'
 }))
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Lite equilibrado' 'Plano Lite + Windows Lite + restauracao leve da NVIDIA quando houver backup.' {
+$tabPresets.Flow.Controls.Add((New-ActionButton 'Lite equilibrado' 'Perfil diario: bom desempenho com consumo menor, Windows otimizado e NVIDIA voltando ao limite salvo.' {
     if (-not (Test-Path $script:BackupFile)) {
         Start-LynextTask 'Criar backup inicial' "Save-LynextBackup -BackupFile '$backupPath'"
         return
@@ -871,35 +951,35 @@ if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Lite -BackupFile 
 "@
 }))
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Termico / quieto' 'Reduz boost agressivo e usa plano voltado a temperatura.' {
+$tabPresets.Flow.Controls.Add((New-ActionButton 'Termico / quieto' 'Para notebook quente ou barulhento: reduz boost agressivo e prioriza temperatura/estabilidade.' {
     Start-LynextTask 'Termico / quieto' "Set-LynextPowerProfile -Profile Thermal"
 }))
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Resumo do sistema' 'Mostra Windows, CPU, GPU, planos de energia e recursos relevantes.' {
+$tabPresets.Flow.Controls.Add((New-ActionButton 'Resumo do sistema' 'Mostra Windows, CPU, GPUs, plano ativo e qual preset Lynext esta em uso.' {
     Start-LynextTask 'Resumo do sistema' 'Show-LynextSummary'
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Ultra' 'Cria/reaproveita o plano Lynext Ultra Performance e ativa.' {
+$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Ultra' 'Somente energia: CPU sempre em alta performance e suspensoes economicas reduzidas.' {
     Start-LynextTask 'Energia Ultra' "Set-LynextPowerProfile -Profile Ultra"
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Lite' 'Cria/reaproveita o plano Lynext Lite e ativa.' {
+$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Lite' 'Somente energia: mantem resposta boa sem travar tudo no maximo o tempo todo.' {
     Start-LynextTask 'Energia Lite' "Set-LynextPowerProfile -Profile Lite"
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Termica' 'Cria/reaproveita o plano Lynext Thermal e ativa.' {
+$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Termica' 'Somente energia: reduz boost e ajuda a controlar temperatura, ruido e bateria.' {
     Start-LynextTask 'Energia Termica' "Set-LynextPowerProfile -Profile Thermal"
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Ultra' 'Game Mode ON, DVR OFF, HAGS ON e prioridades mais agressivas.' {
+$tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Ultra' 'Somente Windows: Game Mode/HAGS ligados, DVR desligado e prioridades de jogos mais agressivas.' {
     Start-LynextTask 'Windows Ultra' "Set-LynextWindowsProfile -Profile Ultra"
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Lite' 'Game Mode ON, DVR OFF, HAGS ON e prioridades moderadas.' {
+$tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Lite' 'Somente Windows: remove gravacao em segundo plano e usa prioridades mais moderadas.' {
     Start-LynextTask 'Windows Lite' "Set-LynextWindowsProfile -Profile Lite"
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Reset Windows' 'Restaura somente os registros salvos no backup.' {
+$tabTuning.Flow.Controls.Add((New-ActionButton 'Reset Windows' 'Volta apenas os ajustes de registro do Windows usando o backup salvo.' {
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -911,7 +991,7 @@ Restore-RegistryFromBackup -Backup `$backup
 "@
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA estado' 'Mostra suporte de power/clocks pelo nvidia-smi.' {
+$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA estado' 'Mostra limites de energia e clocks reportados pelo nvidia-smi.' {
     Start-LynextTask 'NVIDIA estado' @"
 `$smi = Get-NvidiaSmiPath
 if (-not `$smi) { 'nvidia-smi nao encontrado.'; return }
@@ -919,11 +999,11 @@ if (-not `$smi) { 'nvidia-smi nao encontrado.'; return }
 "@
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Ultra' 'Tenta usar o power limit maximo permitido pelo driver.' {
+$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Ultra' 'Tenta aplicar o maior power limit permitido pela GPU/driver.' {
     Start-LynextTask 'NVIDIA Ultra' "Set-NvidiaProfile -Profile Ultra -BackupFile '$backupPath'"
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e restaura power limit salvo quando existir.' {
+$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e volta ao power limit padrao guardado no backup.' {
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -931,7 +1011,7 @@ $tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e
     Start-LynextTask 'NVIDIA Reset/Lite' "Set-NvidiaProfile -Profile Reset -BackupFile '$backupPath'"
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'Power limit manual' 'Define manualmente um power limit em Watts para NVIDIA.' {
+$tabGpu.Flow.Controls.Add((New-ActionButton 'Power limit manual' 'Digite um limite em Watts. Use apenas valores suportados pela sua GPU.' {
     $watts = Show-LynextInput -Title 'Power limit NVIDIA' -Label 'Valor em Watts:' -DefaultValue '200'
     if ([string]::IsNullOrWhiteSpace($watts)) { return }
     if ($watts -notmatch '^\d+(\.\d+)?$') {
@@ -965,11 +1045,11 @@ O tuning automatico pesado fica limitado a NVIDIA por depender do nvidia-smi.
     Set-LynextStatus 'Guia AMD / Intel exibido.' 'ok'
 }))
 
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Criar / atualizar backup' 'Salva plano ativo, registros principais e power limit NVIDIA padrao.' {
+$tabBackup.Flow.Controls.Add((New-ActionButton 'Criar / atualizar backup' 'Guarda o estado atual para conseguir voltar depois com Reset geral.' {
     Start-LynextTask 'Criar / atualizar backup' "Save-LynextBackup -BackupFile '$backupPath'"
 }))
 
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Reset geral' 'Restaura energia, Windows e NVIDIA pelo backup.' {
+$tabBackup.Flow.Controls.Add((New-ActionButton 'Reset geral' 'Volta plano de energia, registros do Windows e ajustes NVIDIA para o backup.' {
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -1001,13 +1081,20 @@ Pasta: $script:LynextRoot
 # =========================================================
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 350
-$timer.Add_Tick({ Poll-LynextTask })
+$timer.Add_Tick({
+    Poll-LynextTask
+    if (-not $script:IsBusy -and ((Get-Date) - $script:LastModeCheck).TotalSeconds -ge 5) {
+        $script:LastModeCheck = Get-Date
+        Update-ActiveModeLabel
+    }
+})
 $timer.Start()
 
 Add-Output 'Lynext Performance Center iniciado.'
 Add-Output "Backup: $script:BackupFile"
 Add-Output "Log: $script:LogFile"
 Set-LynextStatus 'Pronto' 'ok'
+Update-ActiveModeLabel
 Write-LynextLog 'Lynext Performance Center iniciado'
 
 [void]$script:Form.ShowDialog()
