@@ -653,7 +653,7 @@ function Get-LatestAdobeReaderAsset {
     }
     catch {
         return [PSCustomObject]@{
-            Url         = "https://ardownload3.adobe.com/pub/adobe/acrobat/win/AcrobatDC/2600121431/AcroRdrDCx642600121431_MUI.exe"
+            Url         = "https://ardownload3.adobe.com/pub/adobe/acrobat/win/AcrobatDC/2600121483/AcroRdrDCx642600121483_MUI.exe"
             NomeArquivo = "AdobeReader_x64_MUI.exe"
             Versao      = "Fallback"
         }
