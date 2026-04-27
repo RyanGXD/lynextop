@@ -17,7 +17,6 @@ $null = New-Item -Path $script:LynextRoot -ItemType Directory -Force
 $null = New-Item -Path $script:LogDir -ItemType Directory -Force
 $script:LogFile = Join-Path $script:LogDir ("PerformanceApp_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 $script:IsAdmin = $false
-$script:AdminWarning = $null
 
 function Test-LynextAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -32,16 +31,6 @@ function Get-LynextPowerShell {
 }
 
 $script:IsAdmin = Test-LynextAdmin
-if (-not $script:IsAdmin) {
-    $exe = Get-LynextPowerShell
-    try {
-        Start-Process -FilePath $exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$script:ScriptPath`"" -ErrorAction Stop
-        exit
-    }
-    catch {
-        $script:AdminWarning = "Nao consegui abrir como administrador: $($_.Exception.Message)"
-    }
-}
 
 # =========================================================
 # Theme
@@ -901,32 +890,12 @@ $script:Tip.ReshowDelay = 100
 $tabs = New-Object Windows.Forms.TabControl
 $tabs.Dock = 'Fill'
 $tabs.Font = $font.Text
-$tabs.DrawMode = [Windows.Forms.TabDrawMode]::OwnerDrawFixed
-$tabs.ItemSize = New-Object Drawing.Size(140, 30)
-$tabs.SizeMode = 'Fixed'
-$tabs.Add_DrawItem({
-    param($sender, $e)
-    $tab = $sender.TabPages[$e.Index]
-    $selected = (($e.State -band [Windows.Forms.DrawItemState]::Selected) -ne 0)
-    $back = if ($selected) { $ui.Panel } else { $ui.Panel2 }
-    $fore = if ($selected) { $ui.Accent } else { $ui.Text }
-    $brush = New-Object Drawing.SolidBrush($back)
-    $textBrush = New-Object Drawing.SolidBrush($fore)
-    $e.Graphics.FillRectangle($brush, $e.Bounds)
-    $e.Graphics.DrawString($tab.Text, $font.Text, $textBrush, ($e.Bounds.X + 10), ($e.Bounds.Y + 7))
-    $brush.Dispose()
-    $textBrush.Dispose()
-})
 
 $tabPresets = New-Tab 'Presets' 'Presets principais' 'Use estes botoes para aplicar um pacote pronto. Ultra prioriza FPS e resposta; Lite equilibra desempenho e consumo; Termico reduz calor e ruido.'
 $tabTuning = New-Tab 'Energia + Windows' 'Ajustes separados' 'Aqui voce mexe em uma parte por vez: plano de energia da CPU ou ajustes de jogos do Windows.'
 $tabGpu = New-Tab 'GPU' 'GPU e politicas' 'NVIDIA usa nvidia-smi quando disponivel. AMD e Intel ficam com diagnostico e recomendacoes para evitar tuning arriscado.'
 $tabBackup = New-Tab 'Backup' 'Backup, reset e logs' 'Salve o estado atual antes dos presets. O reset volta energia, Windows e NVIDIA para o que foi salvo.'
 $tabs.TabPages.AddRange(@($tabPresets.Page, $tabTuning.Page, $tabGpu.Page, $tabBackup.Page))
-function Resize-LynextTabs {
-    if ($tabs) { $tabs.Invalidate() }
-}
-Resize-LynextTabs
 $split.Panel1.Controls.Add($tabs)
 
 $outPanel = New-Object Windows.Forms.TableLayoutPanel
@@ -983,8 +952,12 @@ $root.Controls.Add($header, 0, 0)
 $root.Controls.Add($split, 0, 1)
 $root.Controls.Add($footer, 0, 2)
 $script:Form.Controls.Add($root)
-$script:Form.Add_Shown({ Resize-LynextSplit; Resize-LynextTabs })
-$script:Form.Add_Resize({ Resize-LynextSplit; Resize-LynextTabs })
+$script:Form.Add_Shown({
+    try { Resize-LynextSplit } catch {}
+})
+$script:Form.Add_Resize({
+    try { Resize-LynextSplit } catch {}
+})
 
 # =========================================================
 # Actions
@@ -1167,12 +1140,12 @@ $timer.Start()
 Add-Output 'Lynext Performance Center iniciado.'
 Add-Output "Backup: $script:BackupFile"
 Add-Output "Log: $script:LogFile"
-if ($script:AdminWarning) {
-    Add-Output $script:AdminWarning
-    Set-LynextStatus 'Aberto sem administrador.' 'warn'
+if ($script:IsAdmin) {
+    Set-LynextStatus 'Pronto' 'ok'
 }
 else {
-    Set-LynextStatus 'Pronto' 'ok'
+    Add-Output 'Aberto sem administrador. O app abre para consulta, mas ajustes precisam de elevacao.'
+    Set-LynextStatus 'Sem administrador.' 'warn'
 }
 Update-ActiveModeLabel
 Write-LynextLog 'Lynext Performance Center iniciado'
