@@ -10,7 +10,6 @@ $destinoBase = Join-Path $env:USERPROFILE "Downloads\Instaladores"
 $downloadsAtivos = @{}
 $statusApps = @{}
 $categoryViews = @{}
-$repoBaseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
 
 # =========================
 # CORES
@@ -24,8 +23,6 @@ $bgList      = [System.Drawing.Color]::FromArgb(16,16,22)
 
 $fgMain      = [System.Drawing.Color]::FromArgb(232,232,238)
 $fgSoft      = [System.Drawing.Color]::FromArgb(165,165,182)
-$fgMuted     = [System.Drawing.Color]::FromArgb(128,128,146)
-
 $accent      = [System.Drawing.Color]::FromArgb(132,108,186)
 $accentSoft  = [System.Drawing.Color]::FromArgb(90,76,132)
 
@@ -164,12 +161,12 @@ $apps = @(
     [PSCustomObject]@{
         Nome = "Adobe Reader"
         Categoria = "Suporte"
-        Tipo = "Manual"
-        Descricao = "Leitor de PDF oficial da Adobe para abrir, visualizar e comentar documentos PDF."
-        Metodo = "Pagina"
+        Tipo = "Automatico"
+        Descricao = "Leitor de PDF oficial da Adobe. Baixa o instalador offline MUI oficial, sem ofertas extras como McAfee ou Adobe Express."
+        Metodo = "AdobeReaderLatest"
         Url = "https://get.adobe.com/br/reader/"
-        Arquivo = ""
-        Fonte = "Pagina oficial"
+        Arquivo = "AdobeReader_x64_MUI.exe"
+        Fonte = "Adobe CDN oficial sem ofertas extras"
     }
     [PSCustomObject]@{
         Nome = "AnyDesk"
@@ -194,12 +191,12 @@ $apps = @(
     [PSCustomObject]@{
         Nome = "Java"
         Categoria = "Suporte"
-        Tipo = "Manual"
-        Descricao = "Pagina oficial do Java para baixar e instalar a versao necessaria de acordo com o teu uso."
-        Metodo = "Pagina"
-        Url = "https://www.java.com/pt-br/download/"
-        Arquivo = ""
-        Fonte = "Pagina oficial"
+        Tipo = "Automatico"
+        Descricao = "Oracle Java para aplicativos de desktop. Baixa automaticamente o instalador Windows Off-line 64 bits da pagina oficial."
+        Metodo = "JavaLatest"
+        Url = "https://www.java.com/pt-BR/download/manual.jsp"
+        Arquivo = "JavaSetup64.exe"
+        Fonte = "Oracle Java oficial"
     }
 )
 
@@ -425,7 +422,7 @@ function AtualizarIndicadoresListas {
 # =========================
 function Get-WebHeaders {
     return @{
-        "User-Agent" = "Lynext-Downloader"
+        "User-Agent" = "Mozilla/5.0 Lynext-Downloader"
         "Accept"     = "*/*"
     }
 }
@@ -554,6 +551,110 @@ function Get-LatestISLCAsset {
         return [PSCustomObject]@{
             Url         = "https://www.wagnardsoft.com/ISLC/ISLC%20v1.0.4.5.exe"
             NomeArquivo = "ISLC.exe"
+            Versao      = "Fallback"
+        }
+    }
+}
+
+function Get-LatestJavaAsset {
+    try {
+        $headers = Get-WebHeaders
+
+        $pagina = Invoke-WebRequest `
+            -Uri "https://www.java.com/pt-BR/download/manual.jsp" `
+            -Headers $headers `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $links = [regex]::Matches(
+            $pagina.Content,
+            '(?is)<a\b[^>]*href="([^"]*AutoDL\?BundleId=[^"]+)"[^>]*>(.*?)</a>'
+        )
+
+        foreach ($link in $links) {
+            $texto = [regex]::Replace($link.Groups[2].Value, '<.*?>', '')
+            $texto = [System.Net.WebUtility]::HtmlDecode($texto)
+
+            if ($texto -match 'Windows\s+Off-?line\s+\(64\s*bits\)') {
+                $url = [System.Net.WebUtility]::HtmlDecode($link.Groups[1].Value)
+
+                if ($url -notmatch '^https?://') {
+                    $url = "https://www.java.com$url"
+                }
+
+                return [PSCustomObject]@{
+                    Url         = $url
+                    NomeArquivo = "JavaSetup64.exe"
+                    Versao      = "Atual"
+                }
+            }
+        }
+
+        throw "Nao foi possivel localizar o Java Windows Off-line 64 bits."
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-LatestAdobeReaderAsset {
+    try {
+        $headers = @{
+            "User-Agent" = "Lynext-Downloader"
+            "Accept"     = "application/vnd.github+json"
+        }
+
+        $baseApi = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/a/Adobe/Acrobat/Reader/64-bit"
+        $versoes = Invoke-RestMethod -Uri $baseApi -Headers $headers -UseBasicParsing -ErrorAction Stop
+
+        $ultimaVersao = $versoes |
+            Where-Object { $_.type -eq "dir" -and $_.name -match '^\d+\.' } |
+            Sort-Object { [version]$_.name } -Descending |
+            Select-Object -First 1
+
+        if (-not $ultimaVersao) {
+            throw "Nao foi possivel localizar a versao mais recente do Adobe Reader."
+        }
+
+        $arquivosVersao = Invoke-RestMethod `
+            -Uri $ultimaVersao.url `
+            -Headers $headers `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $manifest = $arquivosVersao |
+            Where-Object { $_.name -like "*.installer.yaml" } |
+            Select-Object -First 1
+
+        if (-not $manifest) {
+            throw "Manifesto de instalador nao encontrado."
+        }
+
+        $yaml = Invoke-WebRequest `
+            -Uri $manifest.download_url `
+            -Headers (Get-WebHeaders) `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $matchUrl = [regex]::Matches(
+            $yaml.Content,
+            'InstallerUrl:\s*(https://[^\r\n]+AcroRdrDCx64[^\r\n]+_MUI\.exe)'
+        ) | Select-Object -First 1
+
+        if (-not $matchUrl) {
+            throw "URL do instalador MUI x64 nao encontrada."
+        }
+
+        return [PSCustomObject]@{
+            Url         = $matchUrl.Groups[1].Value.Trim()
+            NomeArquivo = "AdobeReader_x64_MUI.exe"
+            Versao      = $ultimaVersao.name
+        }
+    }
+    catch {
+        return [PSCustomObject]@{
+            Url         = "https://ardownload3.adobe.com/pub/adobe/acrobat/win/AcrobatDC/2600121431/AcroRdrDCx642600121431_MUI.exe"
+            NomeArquivo = "AdobeReader_x64_MUI.exe"
             Versao      = "Fallback"
         }
     }
@@ -711,6 +812,24 @@ function Resolver-DownloadInfo {
         }
         "ISLCLatest" {
             $asset = Get-LatestISLCAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url     = $asset.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        "JavaLatest" {
+            $asset = Get-LatestJavaAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url     = $asset.Url
+                Arquivo = $App.Arquivo
+            }
+        }
+        "AdobeReaderLatest" {
+            $asset = Get-LatestAdobeReaderAsset
             if ($null -eq $asset) { return $null }
 
             return [PSCustomObject]@{
