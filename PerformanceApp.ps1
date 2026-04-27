@@ -1355,6 +1355,46 @@ function New-ManualTweakRow {
 # =========================================================
 # Actions
 # =========================================================
+# =========================================================
+# MANUAL UI (ADICIONAR ISSO)
+# =========================================================
+
+$tabManual.Flow.Controls.Add((New-ManualSectionLabel "Ajustes do sistema" "Controle individual dos principais tweaks de performance."))
+
+$tabManual.Flow.Controls.Add((New-ManualLegend))
+
+$tabManual.Flow.Controls.Add(
+    New-ManualTweakRow "GameMode" "Game Mode" "Otimiza o sistema para jogos." "GameModeOn" "GameModeOff"
+)
+
+$tabManual.Flow.Controls.Add(
+    New-ManualTweakRow "GameDvr" "Game DVR" "Gravação em segundo plano (Xbox)." "GameDvrOn" "GameDvrOff"
+)
+
+$tabManual.Flow.Controls.Add(
+    New-ManualTweakRow "Hags" "HAGS" "Agendamento de GPU por hardware." "HagsOn" "HagsOff"
+)
+
+$tabManual.Flow.Controls.Add(
+    New-ManualTweakRow "PowerThrottling" "Power Throttling" "Controle de energia do CPU." "PowerThrottlingPerformance" "PowerThrottlingDefault"
+)
+
+$tabManual.Flow.Controls.Add(
+    New-ManualTweakRow "NetworkThrottling" "Network Throttling" "Limite de rede do Windows." "NetworkUltra" "NetworkDefault"
+)
+
+$tabManual.Flow.Controls.Add(
+    New-ManualTweakRow "SystemResponsiveness" "System Responsiveness" "Prioridade do sistema." "ResponsivenessUltra" "ResponsivenessDefault"
+)
+
+$tabManual.Flow.Controls.Add(
+    New-ManualTweakRow "GamesPriority" "Prioridade Games" "Prioridade de GPU e CPU para jogos." "GamesPriorityUltra" "GamesPriorityDefault"
+)
+
+# Atualiza estados ao abrir
+$script:Form.Add_Shown({
+    Update-LynextManualRows
+})
 $backupPath = Escape-SingleQuote $script:BackupFile
 
 $tabPresets.Flow.Controls.Add((New-ActionButton 'Ultra completo' 'Maximo desempenho: cria/ativa plano Ultra, desliga DVR, liga Game Mode/HAGS e tenta elevar limite NVIDIA.' {
