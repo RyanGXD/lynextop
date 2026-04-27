@@ -13,7 +13,7 @@ $categoryViews = @{}
 $repoBaseUrl = "https://raw.githubusercontent.com/RyanGXD/lynextop/main"
 
 # =========================
-# CORES (DARK + ROXO SUAVE)
+# CORES
 # =========================
 $bgMain      = [System.Drawing.Color]::FromArgb(14,14,18)
 $bgPanel     = [System.Drawing.Color]::FromArgb(22,22,30)
@@ -361,6 +361,40 @@ function Get-WebHeaders {
     }
 }
 
+function Formatar-Tamanho {
+    param([double]$Bytes)
+
+    if ($Bytes -ge 1GB) {
+        return "$([math]::Round($Bytes / 1GB, 2)) GB"
+    }
+
+    if ($Bytes -ge 1MB) {
+        return "$([math]::Round($Bytes / 1MB, 2)) MB"
+    }
+
+    if ($Bytes -ge 1KB) {
+        return "$([math]::Round($Bytes / 1KB, 2)) KB"
+    }
+
+    return "$Bytes B"
+}
+
+function Formatar-Tempo {
+    param([double]$Segundos)
+
+    if ($Segundos -le 0 -or [double]::IsInfinity($Segundos)) {
+        return "--"
+    }
+
+    $ts = [TimeSpan]::FromSeconds($Segundos)
+
+    if ($ts.TotalHours -ge 1) {
+        return "{0:00}:{1:00}:{2:00}" -f $ts.Hours, $ts.Minutes, $ts.Seconds
+    }
+
+    return "{0:00}:{1:00}" -f $ts.Minutes, $ts.Seconds
+}
+
 function Get-LatestGitHubStableAsset {
     param(
         [Parameter(Mandatory = $true)][string]$RepoApiUrl,
@@ -480,33 +514,142 @@ function Iniciar-DownloadExterno {
             Remove-Item $saida -Force -ErrorAction SilentlyContinue
         }
 
-        $script = @"
-`$ProgressPreference = 'SilentlyContinue'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-try {
-    Invoke-WebRequest -Uri '$Url' -OutFile '$saida' -UseBasicParsing -Headers @{ 'User-Agent'='Lynext-Downloader' }
-    exit 0
-}
-catch {
-    exit 1
-}
-"@
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-        $proc = Start-Process powershell.exe `
-            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command $script" `
-            -WindowStyle Hidden `
-            -PassThru
+        $client = New-Object System.Net.WebClient
 
-        $downloadsAtivos[$Nome] = [PSCustomObject]@{
-            ProcessoId = $proc.Id
-            Arquivo    = $saida
-            Finalizado = $false
+        foreach ($header in (Get-WebHeaders).GetEnumerator()) {
+            $client.Headers.Add($header.Key, $header.Value)
         }
+
+        $download = [PSCustomObject]@{
+            Cliente    = $client
+            Arquivo    = $saida
+            Url        = $Url
+            Finalizado = $false
+            Sucesso    = $false
+            Progresso  = 0
+            Recebido   = 0
+            Total      = 0
+            Inicio     = Get-Date
+            Erro       = $null
+        }
+
+        $downloadsAtivos[$Nome] = $download
 
         $statusApps[$Nome] = [PSCustomObject]@{
-            Texto = "Baixando..."
+            Texto = "Iniciando download..."
             Tipo  = "andando"
         }
+
+        $client.add_DownloadProgressChanged({
+            param($sender, $e)
+
+            $download.Progresso = [int]$e.ProgressPercentage
+            $download.Recebido = [double]$e.BytesReceived
+            $download.Total = [double]$e.TotalBytesToReceive
+
+            $tempo = ((Get-Date) - $download.Inicio).TotalSeconds
+            $velocidade = 0
+
+            if ($tempo -gt 0) {
+                $velocidade = $download.Recebido / $tempo
+            }
+
+            $baixadoTxt = Formatar-Tamanho $download.Recebido
+            $totalTxt = if ($download.Total -gt 0) { Formatar-Tamanho $download.Total } else { "tamanho desconhecido" }
+            $velTxt = if ($velocidade -gt 0) { "$(Formatar-Tamanho $velocidade)/s" } else { "--" }
+
+            $etaTxt = "--"
+            if ($download.Total -gt 0 -and $velocidade -gt 0) {
+                $restante = $download.Total - $download.Recebido
+                $etaTxt = Formatar-Tempo ($restante / $velocidade)
+            }
+
+            $textoStatus = "$($download.Progresso)% - $baixadoTxt / $totalTxt - $velTxt - ETA $etaTxt"
+
+            if ($form -and -not $form.IsDisposed) {
+                [void]$form.BeginInvoke([Action]{
+                    $statusApps[$Nome] = [PSCustomObject]@{
+                        Texto = $textoStatus
+                        Tipo  = "andando"
+                    }
+
+                    $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+                    $progress.Value = [math]::Min($download.Progresso, 100)
+                    $geral.Text = "Baixando $Nome: $($download.Progresso)%"
+                })
+            }
+        }.GetNewClosure())
+
+        $client.add_DownloadFileCompleted({
+            param($sender, $e)
+
+            $download.Finalizado = $true
+
+            $cancelado = $e.Cancelled
+            $erroMsg = $null
+
+            if ($null -ne $e.Error) {
+                $erroMsg = $e.Error.Message
+            }
+
+            if ($form -and -not $form.IsDisposed) {
+                [void]$form.BeginInvoke([Action]{
+                    if ($cancelado) {
+                        $download.Sucesso = $false
+                        $download.Erro = "Cancelado"
+
+                        $statusApps[$Nome] = [PSCustomObject]@{
+                            Texto = "Cancelado"
+                            Tipo  = "erro"
+                        }
+
+                        $geral.Text = "$Nome cancelado."
+                    }
+                    elseif ($null -ne $erroMsg) {
+                        $download.Sucesso = $false
+                        $download.Erro = $erroMsg
+
+                        $statusApps[$Nome] = [PSCustomObject]@{
+                            Texto = "Erro [X]"
+                            Tipo  = "erro"
+                        }
+
+                        $geral.Text = "Falha em $Nome: $erroMsg"
+                    }
+                    elseif ((Test-Path $download.Arquivo) -and ((Get-Item $download.Arquivo).Length -gt 0)) {
+                        $download.Sucesso = $true
+                        $download.Progresso = 100
+
+                        $statusApps[$Nome] = [PSCustomObject]@{
+                            Texto = "100% - Concluido [OK]"
+                            Tipo  = "ok"
+                        }
+
+                        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+                        $progress.Value = 100
+                        $geral.Text = "$Nome concluido."
+                    }
+                    else {
+                        $download.Sucesso = $false
+
+                        $statusApps[$Nome] = [PSCustomObject]@{
+                            Texto = "Erro [X]"
+                            Tipo  = "erro"
+                        }
+
+                        $geral.Text = "Falha em $Nome."
+                    }
+
+                    AtualizarDetalhesCategoria $tabControl.SelectedTab.Text
+                })
+            }
+
+            $client.Dispose()
+        }.GetNewClosure())
+
+        $client.DownloadFileAsync([Uri]$Url, $saida)
 
         return $true
     }
@@ -515,6 +658,8 @@ catch {
             Texto = "Erro [X]"
             Tipo  = "erro"
         }
+
+        $geral.Text = "Erro ao iniciar download de $Nome: $($_.Exception.Message)"
         return $false
     }
 }
@@ -616,12 +761,14 @@ function AtualizarDetalhesCategoria {
     $view.Titulo.Text = $app.Nome
     $view.Tipo.Text = "Tipo: $($app.Tipo)"
     $view.Fonte.Text = "Fonte: $($app.Fonte)"
+
     if ([string]::IsNullOrWhiteSpace($app.Arquivo)) {
         $view.Arquivo.Text = "Arquivo: aberto pelo site"
     }
     else {
         $view.Arquivo.Text = "Arquivo: $($app.Arquivo)"
     }
+
     $view.Descricao.Text = $app.Descricao
 
     if ($app.Tipo -eq "Automatico") {
@@ -682,11 +829,17 @@ function ExecutarAcaoDoApp {
         return
     }
 
+    if ($downloadsAtivos.ContainsKey($app.Nome) -and -not $downloadsAtivos[$app.Nome].Finalizado) {
+        $geral.Text = "$($app.Nome) ja esta baixando."
+        return
+    }
+
     $geral.Text = "Preparando download de $($app.Nome)..."
     $statusApps[$app.Nome] = [PSCustomObject]@{
         Texto = "Preparando download..."
         Tipo  = "andando"
     }
+
     AtualizarDetalhesCategoria $Categoria
 
     $downloadInfo = Resolver-DownloadInfo $app
@@ -696,6 +849,7 @@ function ExecutarAcaoDoApp {
             Texto = "Erro ao obter versao [X]"
             Tipo  = "erro"
         }
+
         $geral.Text = "Falha ao resolver download de $($app.Nome)."
         AtualizarDetalhesCategoria $Categoria
         return
@@ -804,6 +958,7 @@ function CriarAbaCategoria {
         if ($listaAuto.SelectedIndex -ge 0) {
             $listaManual.ClearSelected()
         }
+
         AtualizarDetalhesCategoria $Categoria
     }.GetNewClosure())
 
@@ -811,6 +966,7 @@ function CriarAbaCategoria {
         if ($listaManual.SelectedIndex -ge 0) {
             $listaAuto.ClearSelected()
         }
+
         AtualizarDetalhesCategoria $Categoria
     }.GetNewClosure())
 
@@ -879,7 +1035,7 @@ foreach ($tab in $tabControl.TabPages) {
 $progress = New-Object System.Windows.Forms.ProgressBar
 $progress.Location = New-Object System.Drawing.Point(16, 710)
 $progress.Size = New-Object System.Drawing.Size(560, 18)
-$progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+$progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
 $progress.Minimum = 0
 $progress.Maximum = 100
 $progress.Value = 0
@@ -916,85 +1072,25 @@ $btnFechar.Add_Click({
 # TIMER
 # =========================
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 700
+$timer.Interval = 500
 
 $timer.Add_Tick({
-    $ativos = 0
-    $concluidos = 0
-    $total = $downloadsAtivos.Count
+    $ativos = @($downloadsAtivos.Values | Where-Object { -not $_.Finalizado })
 
-    foreach ($nome in @($downloadsAtivos.Keys)) {
-        $info = $downloadsAtivos[$nome]
-
-        if (-not $info.Finalizado) {
-            $proc = Get-Process -Id $info.ProcessoId -ErrorAction SilentlyContinue
-
-            if ($proc) {
-                $ativos++
-
-                if (Test-Path $info.Arquivo) {
-                    try {
-                        $tam = (Get-Item $info.Arquivo).Length
-                        if ($tam -gt 0) {
-                            $mb = [math]::Round($tam / 1MB, 2)
-                            $statusApps[$nome] = [PSCustomObject]@{
-                                Texto = "Baixando... $mb MB"
-                                Tipo  = "andando"
-                            }
-                        }
-                    }
-                    catch {
-                        $statusApps[$nome] = [PSCustomObject]@{
-                            Texto = "Baixando..."
-                            Tipo  = "andando"
-                        }
-                    }
-                }
-                else {
-                    $statusApps[$nome] = [PSCustomObject]@{
-                        Texto = "Baixando..."
-                        Tipo  = "andando"
-                    }
-                }
-            }
-            else {
-                $info.Finalizado = $true
-                $downloadsAtivos[$nome] = $info
-
-                if ((Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
-                    $statusApps[$nome] = [PSCustomObject]@{
-                        Texto = "Concluido [OK]"
-                        Tipo  = "ok"
-                    }
-                    $geral.Text = "$nome concluido."
-                }
-                else {
-                    $statusApps[$nome] = [PSCustomObject]@{
-                        Texto = "Erro [X]"
-                        Tipo  = "erro"
-                    }
-                    $geral.Text = "Falha em $nome."
-                }
-            }
-        }
-
-        if ($info.Finalizado -and (Test-Path $info.Arquivo) -and ((Get-Item $info.Arquivo).Length -gt 0)) {
-            $concluidos++
-        }
-    }
-
-    if ($ativos -gt 0) {
-        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-    }
-    else {
-        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
-
-        if ($total -gt 0) {
-            $progress.Value = [math]::Min([int](($concluidos / $total) * 100), 100)
-        }
-        else {
+    if ($ativos.Count -eq 0) {
+        if ($downloadsAtivos.Count -eq 0) {
             $progress.Value = 0
         }
+    }
+    elseif ($ativos.Count -eq 1) {
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+        $progress.Value = [math]::Min([int]$ativos[0].Progresso, 100)
+    }
+    else {
+        $media = [int](($ativos | Measure-Object -Property Progresso -Average).Average)
+        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+        $progress.Value = [math]::Min($media, 100)
+        $geral.Text = "$($ativos.Count) downloads em andamento - media $media%"
     }
 
     foreach ($categoria in $categoryViews.Keys) {
