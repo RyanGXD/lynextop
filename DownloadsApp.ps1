@@ -7,6 +7,7 @@ Add-Type -AssemblyName System.Drawing
 # CONFIG
 # =========================
 $destinoBase = Join-Path $env:USERPROFILE "Downloads\Instaladores"
+$logAuditoria = Join-Path $destinoBase "downloads-auditoria.log"
 $downloadsAtivos = @{}
 $statusApps = @{}
 $categoryViews = @{}
@@ -121,22 +122,22 @@ $apps = @(
     [PSCustomObject]@{
         Nome = "CPU-Z"
         Categoria = "Monitoramento"
-        Tipo = "Manual"
+        Tipo = "Automatico"
         Descricao = "Mostra informacoes detalhadas do processador, placa-mae, memoria e clocks em tempo real."
-        Metodo = "Pagina"
+        Metodo = "CPUZLatest"
         Url = "https://www.cpuid.com/softwares/cpu-z.html"
-        Arquivo = ""
-        Fonte = "Pagina oficial"
+        Arquivo = "CPU-Z.exe"
+        Fonte = "CPUID oficial (ultima versao)"
     }
     [PSCustomObject]@{
         Nome = "HWiNFO"
         Categoria = "Monitoramento"
-        Tipo = "Manual"
+        Tipo = "Automatico"
         Descricao = "Uma das melhores ferramentas para sensores, temperaturas, consumo, clocks, VRM e diagnostico geral do hardware."
-        Metodo = "Pagina"
+        Metodo = "HWiNFOLatest"
         Url = "https://www.hwinfo.com/download/"
-        Arquivo = ""
-        Fonte = "Pagina oficial"
+        Arquivo = "HWiNFO.exe"
+        Fonte = "HWiNFO oficial (ultima versao)"
     }
     [PSCustomObject]@{
         Nome = "LatencyMon"
@@ -151,12 +152,22 @@ $apps = @(
     [PSCustomObject]@{
         Nome = "OCCT"
         Categoria = "Monitoramento"
-        Tipo = "Manual"
+        Tipo = "Automatico"
         Descricao = "Ferramenta de stress test e validacao para CPU, GPU, memoria, VRAM e fonte. Boa para estabilidade."
-        Metodo = "Pagina"
+        Metodo = "OCCTLatest"
         Url = "https://www.ocbase.com/download"
-        Arquivo = ""
-        Fonte = "Pagina oficial"
+        Arquivo = "OCCT.exe"
+        Fonte = "OCBASE oficial (ultima versao)"
+    }
+    [PSCustomObject]@{
+        Nome = "Core Temp"
+        Categoria = "Monitoramento"
+        Tipo = "Automatico"
+        Descricao = "Monitor leve para temperatura de cada nucleo do processador e informacoes vitais da CPU."
+        Metodo = "CoreTempLatest"
+        Url = "https://www.alcpu.com/CoreTemp/"
+        Arquivo = "CoreTemp.exe"
+        Fonte = "ALCPU oficial (ultima versao)"
     }
     [PSCustomObject]@{
         Nome = "Adobe Reader"
@@ -452,6 +463,207 @@ function Formatar-Tempo {
     return "{0:00}:{1:00}" -f $ts.Minutes, $ts.Seconds
 }
 
+function Escrever-LogAuditoria {
+    param([string]$Mensagem)
+
+    try {
+        Garantir-Pasta $destinoBase
+        $linha = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Mensagem
+        Add-Content -Path $logAuditoria -Value $linha -Encoding UTF8
+    }
+    catch {
+        # Log nao pode impedir download.
+    }
+}
+
+function Test-HostPermitido {
+    param(
+        [string]$Url,
+        [string[]]$DominiosPermitidos
+    )
+
+    if (-not $DominiosPermitidos -or $DominiosPermitidos.Count -eq 0) {
+        return $true
+    }
+
+    try {
+        $hostFinal = ([Uri]$Url).Host.ToLowerInvariant()
+
+        foreach ($dominio in $DominiosPermitidos) {
+            $dominioNormalizado = $dominio.ToLowerInvariant()
+
+            if ($hostFinal -eq $dominioNormalizado -or $hostFinal.EndsWith(".$dominioNormalizado")) {
+                return $true
+            }
+        }
+    }
+    catch {
+        return $false
+    }
+
+    return $false
+}
+
+function Resolve-UrlFinal {
+    param([string]$Url)
+
+    try {
+        $request = [System.Net.HttpWebRequest]::Create($Url)
+        $request.Method = "HEAD"
+        $request.AllowAutoRedirect = $true
+        $request.UserAgent = (Get-WebHeaders)["User-Agent"]
+        $request.Timeout = 15000
+        $response = $request.GetResponse()
+        $final = $response.ResponseUri.AbsoluteUri
+        $response.Close()
+        return $final
+    }
+    catch {
+        return $Url
+    }
+}
+
+function Test-DownloadSeguranca {
+    param(
+        [Parameter(Mandatory = $true)][string]$Arquivo,
+        [string]$Sha256Esperado,
+        [string[]]$PublishersPermitidos
+    )
+
+    $resultado = [PSCustomObject]@{
+        Ok        = $true
+        Hash      = ""
+        Assinatura = "Nao aplicavel"
+        Publisher = ""
+        Mensagem  = "Validacao concluida"
+    }
+
+    if (-not (Test-Path $Arquivo)) {
+        $resultado.Ok = $false
+        $resultado.Mensagem = "Arquivo nao encontrado."
+        return $resultado
+    }
+
+    $resultado.Hash = (Get-FileHash -Path $Arquivo -Algorithm SHA256).Hash
+
+    if (-not [string]::IsNullOrWhiteSpace($Sha256Esperado)) {
+        if ($resultado.Hash -ne $Sha256Esperado.ToUpperInvariant()) {
+            $resultado.Ok = $false
+            $resultado.Mensagem = "Hash SHA-256 diferente do esperado."
+            return $resultado
+        }
+    }
+
+    if ($Arquivo -match '\.(exe|msi)$') {
+        $sig = Get-AuthenticodeSignature -FilePath $Arquivo
+        $resultado.Assinatura = $sig.Status.ToString()
+
+        if ($sig.SignerCertificate) {
+            $resultado.Publisher = $sig.SignerCertificate.Subject
+        }
+
+        if ($PublishersPermitidos -and $PublishersPermitidos.Count -gt 0) {
+            if ($sig.Status -ne "Valid") {
+                $resultado.Ok = $false
+                $resultado.Mensagem = "Assinatura digital invalida ou ausente."
+                return $resultado
+            }
+
+            $publisherOk = $false
+            foreach ($publisher in $PublishersPermitidos) {
+                if ($resultado.Publisher -like "*$publisher*") {
+                    $publisherOk = $true
+                    break
+                }
+            }
+
+            if (-not $publisherOk) {
+                $resultado.Ok = $false
+                $resultado.Mensagem = "Publisher nao permitido: $($resultado.Publisher)"
+                return $resultado
+            }
+        }
+    }
+
+    return $resultado
+}
+
+function Get-WingetLatestInstaller {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackageId,
+        [string[]]$UrlContains = @()
+    )
+
+    try {
+        $partes = $PackageId.Split(".")
+        $primeiraLetra = $partes[0].Substring(0, 1).ToLowerInvariant()
+        $manifestPath = "manifests/$primeiraLetra/" + ($partes -join "/")
+        $apiUrl = "https://api.github.com/repos/microsoft/winget-pkgs/contents/$manifestPath"
+        $headers = @{
+            "User-Agent" = "Lynext-Downloader"
+            "Accept"     = "application/vnd.github+json"
+        }
+
+        $versoes = Invoke-RestMethod -Uri $apiUrl -Headers $headers -UseBasicParsing -ErrorAction Stop
+        $ultimaVersao = $versoes |
+            Where-Object { $_.type -eq "dir" -and $_.name -match '^\d+(\.\d+)+' } |
+            Sort-Object { [version]$_.name } -Descending |
+            Select-Object -First 1
+
+        if (-not $ultimaVersao) {
+            throw "Versao nao encontrada para $PackageId."
+        }
+
+        $arquivosVersao = Invoke-RestMethod -Uri $ultimaVersao.url -Headers $headers -UseBasicParsing -ErrorAction Stop
+        $manifest = $arquivosVersao |
+            Where-Object { $_.name -like "*.installer.yaml" } |
+            Select-Object -First 1
+
+        if (-not $manifest) {
+            throw "Manifesto de instalador nao encontrado para $PackageId."
+        }
+
+        $yaml = (Invoke-WebRequest -Uri $manifest.download_url -Headers (Get-WebHeaders) -UseBasicParsing -ErrorAction Stop).Content
+        $blocos = [regex]::Split($yaml, "(?m)^-\s+Architecture:")
+
+        foreach ($blocoOriginal in $blocos) {
+            $bloco = $blocoOriginal
+            if ($bloco -notmatch "InstallerUrl:") {
+                continue
+            }
+
+            $url = ([regex]::Match($bloco, "InstallerUrl:\s*(\S+)")).Groups[1].Value.Trim()
+            $sha = ([regex]::Match($bloco, "InstallerSha256:\s*([A-Fa-f0-9]+)")).Groups[1].Value.Trim()
+
+            if ([string]::IsNullOrWhiteSpace($url)) {
+                continue
+            }
+
+            $passaFiltro = $true
+            foreach ($filtro in $UrlContains) {
+                if ($url -notlike "*$filtro*") {
+                    $passaFiltro = $false
+                    break
+                }
+            }
+
+            if ($passaFiltro) {
+                return [PSCustomObject]@{
+                    Url         = $url
+                    NomeArquivo = [System.IO.Path]::GetFileName(([Uri]$url).AbsolutePath)
+                    Versao      = $ultimaVersao.name
+                    Sha256      = $sha
+                }
+            }
+        }
+
+        throw "URL de instalador nao encontrada para $PackageId."
+    }
+    catch {
+        return $null
+    }
+}
+
 function Get-LatestGitHubStableAsset {
     param(
         [Parameter(Mandatory = $true)][string]$RepoApiUrl,
@@ -556,6 +768,60 @@ function Get-LatestISLCAsset {
     }
 }
 
+function Get-LatestCPUZAsset {
+    return Get-WingetLatestInstaller -PackageId "CPUID.CPU-Z" -UrlContains @("download.cpuid.com")
+}
+
+function Get-LatestHWiNFOAsset {
+    return Get-WingetLatestInstaller -PackageId "REALiX.HWiNFO"
+}
+
+function Get-LatestOCCTAsset {
+    try {
+        $headers = Get-WebHeaders
+
+        $pagina = Invoke-WebRequest `
+            -Uri "https://www.ocbase.com/download?fileext=exe" `
+            -Headers $headers `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        $matchVersao = [regex]::Matches(
+            $pagina.Content,
+            '"versionStr":"([^"]+)".*?"edition":"Personal".*?"os":"Windows"'
+        ) | Select-Object -First 1
+
+        $versao = if ($matchVersao) { $matchVersao.Groups[1].Value } else { "Atual" }
+
+        return [PSCustomObject]@{
+            Url         = "https://www.ocbase.com/download-bin/edition:Personal/os:Windows"
+            NomeArquivo = "OCCT.exe"
+            Versao      = $versao
+        }
+    }
+    catch {
+        return [PSCustomObject]@{
+            Url         = "https://www.ocbase.com/download-bin/edition:Personal/os:Windows"
+            NomeArquivo = "OCCT.exe"
+            Versao      = "Atual"
+        }
+    }
+}
+
+function Get-LatestCoreTempAsset {
+    $asset = Get-WingetLatestInstaller -PackageId "ALCPU.CoreTemp" -UrlContains @("alcpu.com")
+    if ($null -ne $asset) {
+        return $asset
+    }
+
+    return [PSCustomObject]@{
+        Url         = "https://www.alcpu.com/CoreTemp/Core-Temp-setup.exe"
+        NomeArquivo = "CoreTemp.exe"
+        Versao      = "Atual"
+        Sha256      = ""
+    }
+}
+
 function Get-LatestJavaAsset {
     try {
         $headers = Get-WebHeaders
@@ -598,65 +864,92 @@ function Get-LatestJavaAsset {
 }
 
 function Get-LatestAdobeReaderAsset {
-    try {
-        $headers = @{
-            "User-Agent" = "Lynext-Downloader"
-            "Accept"     = "application/vnd.github+json"
-        }
+    $githubHeaders = @{
+        "User-Agent" = "Lynext-Downloader"
+        "Accept"     = "application/vnd.github+json"
+    }
 
+    try {
         $baseApi = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/a/Adobe/Acrobat/Reader/64-bit"
-        $versoes = Invoke-RestMethod -Uri $baseApi -Headers $headers -UseBasicParsing -ErrorAction Stop
+        $versoes = Invoke-RestMethod -Uri $baseApi -Headers $githubHeaders -UseBasicParsing -ErrorAction Stop
 
         $ultimaVersao = $versoes |
             Where-Object { $_.type -eq "dir" -and $_.name -match '^\d+\.' } |
             Sort-Object { [version]$_.name } -Descending |
             Select-Object -First 1
 
-        if (-not $ultimaVersao) {
-            throw "Nao foi possivel localizar a versao mais recente do Adobe Reader."
+        if ($ultimaVersao) {
+            $arquivosVersao = Invoke-RestMethod `
+                -Uri $ultimaVersao.url `
+                -Headers $githubHeaders `
+                -UseBasicParsing `
+                -ErrorAction Stop
+
+            $manifest = $arquivosVersao |
+                Where-Object { $_.name -like "*.installer.yaml" } |
+                Select-Object -First 1
+
+            if ($manifest) {
+                $yaml = Invoke-WebRequest `
+                    -Uri $manifest.download_url `
+                    -Headers (Get-WebHeaders) `
+                    -UseBasicParsing `
+                    -ErrorAction Stop
+
+                $matchUrl = [regex]::Matches(
+                    $yaml.Content,
+                    'InstallerUrl:\s*(https://[^\r\n]+AcroRdrDCx64[^\r\n]+_MUI\.exe)'
+                ) | Select-Object -First 1
+
+                $matchSha = [regex]::Matches(
+                    $yaml.Content,
+                    'InstallerSha256:\s*([A-Fa-f0-9]+)'
+                ) | Select-Object -First 1
+
+                if ($matchUrl) {
+                    return [PSCustomObject]@{
+                        Url         = $matchUrl.Groups[1].Value.Trim()
+                        NomeArquivo = "AdobeReader_x64_MUI.exe"
+                        Versao      = $ultimaVersao.name
+                        Sha256      = if ($matchSha) { $matchSha.Groups[1].Value.Trim() } else { "" }
+                    }
+                }
+            }
         }
+    }
+    catch {
+        # Se o Winget ainda nao atualizou ou falhar, tenta direto pelo indice oficial da Adobe.
+    }
 
-        $arquivosVersao = Invoke-RestMethod `
-            -Uri $ultimaVersao.url `
-            -Headers $headers `
-            -UseBasicParsing `
-            -ErrorAction Stop
-
-        $manifest = $arquivosVersao |
-            Where-Object { $_.name -like "*.installer.yaml" } |
-            Select-Object -First 1
-
-        if (-not $manifest) {
-            throw "Manifesto de instalador nao encontrado."
-        }
-
-        $yaml = Invoke-WebRequest `
-            -Uri $manifest.download_url `
+    try {
+        $indice = Invoke-WebRequest `
+            -Uri "https://www.adobe.com/devnet-docs/acrobatetk/tools/ReleaseNotesDC/index.html" `
             -Headers (Get-WebHeaders) `
             -UseBasicParsing `
             -ErrorAction Stop
 
-        $matchUrl = [regex]::Matches(
-            $yaml.Content,
-            'InstallerUrl:\s*(https://[^\r\n]+AcroRdrDCx64[^\r\n]+_MUI\.exe)'
-        ) | Select-Object -First 1
+        $ultimaVersaoAdobe = [regex]::Matches(
+            $indice.Content,
+            '(\d{2}\.\d{3}\.\d{5})\s+Planned update'
+        ) |
+            ForEach-Object { $_.Groups[1].Value } |
+            Sort-Object { [version]$_ } -Descending |
+            Select-Object -First 1
 
-        if (-not $matchUrl) {
-            throw "URL do instalador MUI x64 nao encontrada."
+        if (-not $ultimaVersaoAdobe) {
+            throw "Nao foi possivel localizar a versao mais recente nas release notes da Adobe."
         }
 
+        $build = $ultimaVersaoAdobe.Replace(".", "")
+
         return [PSCustomObject]@{
-            Url         = $matchUrl.Groups[1].Value.Trim()
+            Url         = "https://ardownload3.adobe.com/pub/adobe/acrobat/win/AcrobatDC/$build/AcroRdrDCx64${build}_MUI.exe"
             NomeArquivo = "AdobeReader_x64_MUI.exe"
-            Versao      = $ultimaVersao.name
+            Versao      = $ultimaVersaoAdobe
         }
     }
     catch {
-        return [PSCustomObject]@{
-            Url         = "https://ardownload3.adobe.com/pub/adobe/acrobat/win/AcrobatDC/2600121483/AcroRdrDCx642600121483_MUI.exe"
-            NomeArquivo = "AdobeReader_x64_MUI.exe"
-            Versao      = "Fallback"
-        }
+        return $null
     }
 }
 
@@ -664,7 +957,10 @@ function Iniciar-DownloadExterno {
     param(
         [string]$Nome,
         [string]$Url,
-        [string]$Arquivo
+        [string]$Arquivo,
+        [string]$Sha256Esperado = "",
+        [string[]]$PublishersPermitidos = @(),
+        [string[]]$DominiosPermitidos = @()
     )
 
     try {
@@ -677,6 +973,14 @@ function Iniciar-DownloadExterno {
 
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+        $urlFinal = Resolve-UrlFinal $Url
+
+        if (-not (Test-HostPermitido -Url $urlFinal -DominiosPermitidos $DominiosPermitidos)) {
+            throw "Host final nao permitido: $(([Uri]$urlFinal).Host)"
+        }
+
+        Escrever-LogAuditoria "$Nome | URL inicial: $Url | URL final: $urlFinal"
+
         $client = New-Object System.Net.WebClient
 
         foreach ($header in (Get-WebHeaders).GetEnumerator()) {
@@ -686,7 +990,7 @@ function Iniciar-DownloadExterno {
         $download = [PSCustomObject]@{
             Cliente     = $client
             Arquivo     = $saida
-            Url         = $Url
+            Url         = $urlFinal
             Finalizado  = $false
             Sucesso     = $false
             Progresso   = 0
@@ -757,12 +1061,41 @@ function Iniciar-DownloadExterno {
                 }
             }
             elseif ((Test-Path $download.Arquivo) -and ((Get-Item $download.Arquivo).Length -gt 0)) {
-                $download.Sucesso = $true
-                $download.Progresso = 100
                 $tamanhoFinal = Formatar-Tamanho ((Get-Item $download.Arquivo).Length)
-                $statusApps[$Nome] = [PSCustomObject]@{
-                    Texto = "100% concluido [OK]`r`nArquivo salvo em: $($download.Arquivo)`r`nTamanho final: $tamanhoFinal"
-                    Tipo  = "ok"
+
+                $validacao = Test-DownloadSeguranca `
+                    -Arquivo $download.Arquivo `
+                    -Sha256Esperado $Sha256Esperado `
+                    -PublishersPermitidos $PublishersPermitidos
+
+                Escrever-LogAuditoria "$Nome | Arquivo: $($download.Arquivo) | SHA256: $($validacao.Hash) | Assinatura: $($validacao.Assinatura) | Publisher: $($validacao.Publisher) | Resultado: $($validacao.Mensagem)"
+
+                if ($validacao.Ok) {
+                    $download.Sucesso = $true
+                    $download.Progresso = 100
+
+                    $validacaoTxt = if (-not [string]::IsNullOrWhiteSpace($Sha256Esperado)) {
+                        "Hash SHA-256 conferido [OK]"
+                    }
+                    elseif ($PublishersPermitidos -and $PublishersPermitidos.Count -gt 0) {
+                        "Assinatura digital conferida [OK]"
+                    }
+                    else {
+                        "Download concluido; sem hash fixo para conferir"
+                    }
+
+                    $statusApps[$Nome] = [PSCustomObject]@{
+                        Texto = "100% concluido [OK]`r`n$validacaoTxt`r`nArquivo salvo em: $($download.Arquivo)`r`nTamanho final: $tamanhoFinal"
+                        Tipo  = "ok"
+                    }
+                }
+                else {
+                    $download.Sucesso = $false
+                    $download.Erro = $validacao.Mensagem
+                    $statusApps[$Nome] = [PSCustomObject]@{
+                        Texto = "Falha na validacao [X]`r`n$($validacao.Mensagem)"
+                        Tipo  = "erro"
+                    }
                 }
             }
             else {
@@ -777,7 +1110,7 @@ function Iniciar-DownloadExterno {
             $client.Dispose()
         }.GetNewClosure())
 
-        $client.DownloadFileAsync([Uri]$Url, $saida)
+        $client.DownloadFileAsync([Uri]$urlFinal, $saida)
         return $true
     }
     catch {
@@ -797,8 +1130,11 @@ function Resolver-DownloadInfo {
     switch ($App.Metodo) {
         "Direto" {
             return [PSCustomObject]@{
-                Url     = $App.Url
-                Arquivo = $App.Arquivo
+                Url                 = $App.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = ""
+                PublishersPermitidos = @()
+                DominiosPermitidos   = @(([Uri]$App.Url).Host)
             }
         }
         "GitHubLatestZip" {
@@ -806,8 +1142,11 @@ function Resolver-DownloadInfo {
             if ($null -eq $asset) { return $null }
 
             return [PSCustomObject]@{
-                Url     = $asset.Url
-                Arquivo = $App.Arquivo
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = ""
+                PublishersPermitidos = @()
+                DominiosPermitidos   = @("github.com", "objects.githubusercontent.com")
             }
         }
         "ISLCLatest" {
@@ -815,8 +1154,59 @@ function Resolver-DownloadInfo {
             if ($null -eq $asset) { return $null }
 
             return [PSCustomObject]@{
-                Url     = $asset.Url
-                Arquivo = $App.Arquivo
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = ""
+                PublishersPermitidos = @()
+                DominiosPermitidos   = @("wagnardsoft.com")
+            }
+        }
+        "CPUZLatest" {
+            $asset = Get-LatestCPUZAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = $asset.Sha256
+                PublishersPermitidos = @("CPUID")
+                DominiosPermitidos   = @("download.cpuid.com")
+            }
+        }
+        "HWiNFOLatest" {
+            $asset = Get-LatestHWiNFOAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = $asset.Sha256
+                PublishersPermitidos = @("REALiX", "Martin Malik")
+                DominiosPermitidos   = @("sourceforge.net", "downloads.sourceforge.net", "dl.sourceforge.net", "sac.sk")
+            }
+        }
+        "OCCTLatest" {
+            $asset = Get-LatestOCCTAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = $asset.Sha256
+                PublishersPermitidos = @("OCBASE")
+                DominiosPermitidos   = @("ocbase.com", "dl.ocbase.com")
+            }
+        }
+        "CoreTempLatest" {
+            $asset = Get-LatestCoreTempAsset
+            if ($null -eq $asset) { return $null }
+
+            return [PSCustomObject]@{
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = $asset.Sha256
+                PublishersPermitidos = @("ALCPU", "Arthur Liberman")
+                DominiosPermitidos   = @("alcpu.com")
             }
         }
         "JavaLatest" {
@@ -824,8 +1214,11 @@ function Resolver-DownloadInfo {
             if ($null -eq $asset) { return $null }
 
             return [PSCustomObject]@{
-                Url     = $asset.Url
-                Arquivo = $App.Arquivo
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = ""
+                PublishersPermitidos = @("Oracle")
+                DominiosPermitidos   = @("java.com", "javadl.oracle.com", "download.oracle.com")
             }
         }
         "AdobeReaderLatest" {
@@ -833,8 +1226,11 @@ function Resolver-DownloadInfo {
             if ($null -eq $asset) { return $null }
 
             return [PSCustomObject]@{
-                Url     = $asset.Url
-                Arquivo = $App.Arquivo
+                Url                 = $asset.Url
+                Arquivo             = $App.Arquivo
+                Sha256              = $asset.Sha256
+                PublishersPermitidos = @("Adobe")
+                DominiosPermitidos   = @("adobe.com", "ardownload3.adobe.com", "ardownload2.adobe.com")
             }
         }
         default {
@@ -1007,7 +1403,13 @@ function ExecutarAcaoDoApp {
         return
     }
 
-    $ok = Iniciar-DownloadExterno -Nome $app.Nome -Url $downloadInfo.Url -Arquivo $downloadInfo.Arquivo
+    $ok = Iniciar-DownloadExterno `
+        -Nome $app.Nome `
+        -Url $downloadInfo.Url `
+        -Arquivo $downloadInfo.Arquivo `
+        -Sha256Esperado $downloadInfo.Sha256 `
+        -PublishersPermitidos $downloadInfo.PublishersPermitidos `
+        -DominiosPermitidos $downloadInfo.DominiosPermitidos
 
     if ($ok) {
         $geral.Text = "Baixando $($app.Nome)..."
