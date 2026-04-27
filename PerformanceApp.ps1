@@ -914,7 +914,6 @@ function Poll-LynextTask {
     $script:IsBusy = $false
     $script:Task = $null
     Update-ActiveModeLabel
-    Update-LynextManualRows
 }
 
 # =========================================================
@@ -1138,263 +1137,9 @@ $script:Form.Add_Resize({
     try { Resize-LynextSplit } catch {}
 })
 
-
-# =========================================================
-# Manual tab visual helpers
-# =========================================================
-$script:ManualRows = @()
-
-function Get-LocalRegValue {
-    param([string]$Path, [string]$Name)
-    try { return (Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop).$Name }
-    catch { return $null }
-}
-
-function Get-ManualStateColor {
-    param([ValidateSet('on','off','busy','custom')] [string]$State)
-    switch ($State) {
-        'on'     { return [Drawing.Color]::FromArgb(74, 222, 128) }
-        'busy'   { return [Drawing.Color]::FromArgb(250, 204, 21) }
-        'custom' { return [Drawing.Color]::FromArgb(250, 204, 21) }
-        default  { return [Drawing.Color]::FromArgb(248, 113, 113) }
-    }
-}
-
-function Get-ManualStateText {
-    param([ValidateSet('on','off','busy','custom')] [string]$State)
-    switch ($State) {
-        'on'     { return 'Ativado' }
-        'busy'   { return 'Ativando...' }
-        'custom' { return 'Personalizado' }
-        default  { return 'Desativado' }
-    }
-}
-
-function Get-ManualTweakState {
-    param([string]$Key)
-    switch ($Key) {
-        'GameMode' {
-            $a = Get-LocalRegValue 'HKCU:\Software\Microsoft\GameBar' 'AutoGameModeEnabled'
-            $b = Get-LocalRegValue 'HKCU:\Software\Microsoft\GameBar' 'AllowAutoGameMode'
-            if ($a -eq 1 -or $b -eq 1) { return 'on' }
-            return 'off'
-        }
-        'GameDvr' {
-            $a = Get-LocalRegValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' 'AppCaptureEnabled'
-            $b = Get-LocalRegValue 'HKCU:\System\GameConfigStore' 'GameDVR_Enabled'
-            if ($a -eq 0 -and $b -eq 0) { return 'off' }
-            return 'on'
-        }
-        'Hags' {
-            $v = Get-LocalRegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' 'HwSchMode'
-            if ($v -eq 2) { return 'on' }
-            return 'off'
-        }
-        'PowerThrottling' {
-            $v = Get-LocalRegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' 'PowerThrottlingOff'
-            if ($v -eq 1) { return 'on' }
-            return 'off'
-        }
-        'NetworkThrottling' {
-            $v = Get-LocalRegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'NetworkThrottlingIndex'
-            if ($null -eq $v) { return 'off' }
-            if ([UInt32]$v -eq [UInt32]4294967295) { return 'on' }
-            if ($v -eq 10) { return 'off' }
-            return 'custom'
-        }
-        'SystemResponsiveness' {
-            $v = Get-LocalRegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'SystemResponsiveness'
-            if ($v -eq 10) { return 'on' }
-            if ($v -eq 20 -or $null -eq $v) { return 'off' }
-            return 'custom'
-        }
-        'GamesPriority' {
-            $gpu = Get-LocalRegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'GPU Priority'
-            $pri = Get-LocalRegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games' 'Priority'
-            if ($gpu -eq 8 -and $pri -eq 6) { return 'on' }
-            if ($null -eq $gpu -and $null -eq $pri) { return 'off' }
-            return 'custom'
-        }
-        default { return 'off' }
-    }
-}
-
-function Update-LynextManualRows {
-    if (-not $script:ManualRows) { return }
-    foreach ($row in $script:ManualRows) {
-        try {
-            $state = Get-ManualTweakState -Key $row.Key
-            $color = Get-ManualStateColor -State $state
-            $row.Dot.ForeColor = $color
-            $row.StateLabel.Text = Get-ManualStateText -State $state
-            $row.StateLabel.ForeColor = $color
-            if ($state -eq 'on' -or $state -eq 'custom') {
-                $row.Button.Text = $row.OffText
-                $row.Button.Tag = $row.OffTweak
-            } else {
-                $row.Button.Text = $row.OnText
-                $row.Button.Tag = $row.OnTweak
-            }
-            $row.Button.Enabled = -not $script:IsBusy
-        } catch {}
-    }
-}
-
-function New-ManualSectionLabel {
-    param([string]$Text, [string]$SubText)
-    $panel = New-Object Windows.Forms.Panel
-    $panel.Size = New-Object Drawing.Size(690, 58)
-    $panel.Margin = New-Object Windows.Forms.Padding(6, 8, 6, 2)
-    $panel.BackColor = $ui.Panel
-    $title = New-Object Windows.Forms.Label
-    $title.Text = $Text
-    $title.Location = New-Object Drawing.Point(0, 4)
-    $title.Size = New-Object Drawing.Size(660, 24)
-    $title.Font = $font.H2
-    $title.ForeColor = $ui.Accent
-    $desc = New-Object Windows.Forms.Label
-    $desc.Text = $SubText
-    $desc.Location = New-Object Drawing.Point(0, 30)
-    $desc.Size = New-Object Drawing.Size(660, 20)
-    $desc.Font = $font.Text
-    $desc.ForeColor = $ui.Muted
-    $panel.Controls.AddRange(@($title, $desc))
-    return $panel
-}
-
-function New-ManualLegend {
-    $panel = New-Object Windows.Forms.Panel
-    $panel.Size = New-Object Drawing.Size(690, 42)
-    $panel.Margin = New-Object Windows.Forms.Padding(6, 4, 6, 8)
-    $panel.BackColor = $ui.Panel2
-    $panel.BorderStyle = 'FixedSingle'
-    $items = @(
-        @{ Text = 'Ativado'; Color = Get-ManualStateColor 'on'; X = 18 },
-        @{ Text = 'Ativando...'; Color = Get-ManualStateColor 'busy'; X = 150 },
-        @{ Text = 'Desativado'; Color = Get-ManualStateColor 'off'; X = 305 },
-        @{ Text = 'Personalizado'; Color = Get-ManualStateColor 'custom'; X = 470 }
-    )
-    foreach ($item in $items) {
-        $dot = New-Object Windows.Forms.Label
-        $dot.Text = '●'
-        $dot.Location = New-Object Drawing.Point($item.X, 10)
-        $dot.Size = New-Object Drawing.Size(18, 18)
-        $dot.Font = New-Object Drawing.Font('Segoe UI', 12, [Drawing.FontStyle]::Bold)
-        $dot.ForeColor = $item.Color
-        $lbl = New-Object Windows.Forms.Label
-        $lbl.Text = $item.Text
-        $lbl.Location = New-Object Drawing.Point(($item.X + 22), 12)
-        $lbl.Size = New-Object Drawing.Size(120, 18)
-        $lbl.Font = $font.Text
-        $lbl.ForeColor = $ui.Text
-        $panel.Controls.AddRange(@($dot, $lbl))
-    }
-    return $panel
-}
-
-function New-ManualTweakRow {
-    param([string]$Key,[string]$Title,[string]$Description,[string]$OnTweak,[string]$OffTweak,[string]$OnText = 'Ativar',[string]$OffText = 'Desativar')
-    $panel = New-Object Windows.Forms.Panel
-    $panel.Size = New-Object Drawing.Size(690, 58)
-    $panel.Margin = New-Object Windows.Forms.Padding(6, 4, 6, 4)
-    $panel.BackColor = $ui.Panel2
-    $panel.BorderStyle = 'FixedSingle'
-    $dot = New-Object Windows.Forms.Label
-    $dot.Text = '●'
-    $dot.Location = New-Object Drawing.Point(16, 18)
-    $dot.Size = New-Object Drawing.Size(22, 22)
-    $dot.Font = New-Object Drawing.Font('Segoe UI', 13, [Drawing.FontStyle]::Bold)
-    $dot.ForeColor = Get-ManualStateColor 'off'
-    $title = New-Object Windows.Forms.Label
-    $title.Text = $Title
-    $title.Location = New-Object Drawing.Point(46, 10)
-    $title.Size = New-Object Drawing.Size(330, 20)
-    $title.Font = $font.Btn
-    $title.ForeColor = $ui.Text
-    $desc = New-Object Windows.Forms.Label
-    $desc.Text = $Description
-    $desc.Location = New-Object Drawing.Point(46, 31)
-    $desc.Size = New-Object Drawing.Size(390, 18)
-    $desc.Font = $font.Text
-    $desc.ForeColor = $ui.Muted
-    $state = New-Object Windows.Forms.Label
-    $state.Text = 'Lendo...'
-    $state.Location = New-Object Drawing.Point(438, 19)
-    $state.Size = New-Object Drawing.Size(92, 18)
-    $state.Font = $font.Text
-    $state.ForeColor = $ui.Warn
-    $btn = New-Object Windows.Forms.Button
-    $btn.Text = '...'
-    $btn.Location = New-Object Drawing.Point(540, 12)
-    $btn.Size = New-Object Drawing.Size(130, 34)
-    $btn.FlatStyle = 'Flat'
-    $btn.BackColor = $ui.Button
-    $btn.ForeColor = $ui.Text
-    $btn.FlatAppearance.BorderColor = $ui.Border
-    $btn.FlatAppearance.MouseOverBackColor = $ui.ButtonHot
-    $btn.FlatAppearance.MouseDownBackColor = $ui.ButtonDn
-    $btn.Font = $font.Btn
-    $btn.Cursor = [Windows.Forms.Cursors]::Hand
-    $btn.UseVisualStyleBackColor = $false
-    $row = [pscustomobject]@{ Key=$Key; Dot=$dot; StateLabel=$state; Button=$btn; OnTweak=$OnTweak; OffTweak=$OffTweak; OnText=$OnText; OffText=$OffText }
-    $btn.Add_Click({
-        if (-not (Require-LynextAdmin)) { return }
-        if ($script:IsBusy) { Set-LynextStatus 'Aguarde a tarefa atual terminar.' 'warn'; return }
-        $row.Dot.ForeColor = Get-ManualStateColor 'busy'
-        $row.StateLabel.Text = 'Ativando...'
-        $row.StateLabel.ForeColor = Get-ManualStateColor 'busy'
-        $row.Button.Enabled = $false
-        $tweakName = [string]$row.Button.Tag
-        Start-LynextTask "$Title" "Set-LynextManualTweak -Tweak $tweakName"
-    }.GetNewClosure())
-    $panel.Controls.AddRange(@($dot, $title, $desc, $state, $btn))
-    $script:ManualRows += $row
-    return $panel
-}
-
 # =========================================================
 # Actions
 # =========================================================
-# =========================================================
-# MANUAL UI (ADICIONAR ISSO)
-# =========================================================
-
-$tabManual.Flow.Controls.Add((New-ManualSectionLabel "Ajustes do sistema" "Controle individual dos principais tweaks de performance."))
-
-$tabManual.Flow.Controls.Add((New-ManualLegend))
-
-$tabManual.Flow.Controls.Add(
-    New-ManualTweakRow "GameMode" "Game Mode" "Otimiza o sistema para jogos." "GameModeOn" "GameModeOff"
-)
-
-$tabManual.Flow.Controls.Add(
-    New-ManualTweakRow "GameDvr" "Game DVR" "Gravação em segundo plano (Xbox)." "GameDvrOn" "GameDvrOff"
-)
-
-$tabManual.Flow.Controls.Add(
-    New-ManualTweakRow "Hags" "HAGS" "Agendamento de GPU por hardware." "HagsOn" "HagsOff"
-)
-
-$tabManual.Flow.Controls.Add(
-    New-ManualTweakRow "PowerThrottling" "Power Throttling" "Controle de energia do CPU." "PowerThrottlingPerformance" "PowerThrottlingDefault"
-)
-
-$tabManual.Flow.Controls.Add(
-    New-ManualTweakRow "NetworkThrottling" "Network Throttling" "Limite de rede do Windows." "NetworkUltra" "NetworkDefault"
-)
-
-$tabManual.Flow.Controls.Add(
-    New-ManualTweakRow "SystemResponsiveness" "System Responsiveness" "Prioridade do sistema." "ResponsivenessUltra" "ResponsivenessDefault"
-)
-
-$tabManual.Flow.Controls.Add(
-    New-ManualTweakRow "GamesPriority" "Prioridade Games" "Prioridade de GPU e CPU para jogos." "GamesPriorityUltra" "GamesPriorityDefault"
-)
-
-# Atualiza estados ao abrir
-$script:Form.Add_Shown({
-    Update-LynextManualRows
-})
 $backupPath = Escape-SingleQuote $script:BackupFile
 
 $tabPresets.Flow.Controls.Add((New-ActionButton 'Ultra completo' 'Maximo desempenho: cria/ativa plano Ultra, desliga DVR, liga Game Mode/HAGS e tenta elevar limite NVIDIA.' {
@@ -1527,21 +1272,79 @@ O tuning automatico pesado fica limitado a NVIDIA por depender do nvidia-smi.
 # -------------------------
 # Manual
 # -------------------------
-$tabManual.Flow.Controls.Add((New-ManualSectionLabel 'Manual' 'Controle individual com leitura do PC. Vermelho = desativado, amarelo = aplicando, verde = ativo.'))
-$tabManual.Flow.Controls.Add((New-ManualLegend))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Verificar ajustes' 'Atualiza a leitura visual da aba e tambem mostra detalhes na saida.' {
-    Update-LynextManualRows
+$tabManual.Flow.Controls.Add((New-ActionButton 'Verificar ajustes manuais' 'Le o PC e mostra se cada ajuste esta ativo, desativado, padrao ou personalizado.' {
     Start-LynextTask 'Verificar ajustes manuais' 'Get-LynextManualState'
-} 220))
+}))
 
-$tabManual.Flow.Controls.Add((New-ManualTweakRow -Key 'GameMode' -Title 'Game Mode' -Description 'Otimiza o Windows para jogos.' -OnTweak 'GameModeOn' -OffTweak 'GameModeOff'))
-$tabManual.Flow.Controls.Add((New-ManualTweakRow -Key 'GameDvr' -Title 'Game DVR / Captura Xbox' -Description 'Gravacao e captura em segundo plano.' -OnTweak 'GameDvrOn' -OffTweak 'GameDvrOff'))
-$tabManual.Flow.Controls.Add((New-ManualTweakRow -Key 'Hags' -Title 'HAGS / Agendamento de GPU' -Description 'Agendamento de GPU acelerado por hardware.' -OnTweak 'HagsOn' -OffTweak 'HagsOff'))
-$tabManual.Flow.Controls.Add((New-ManualTweakRow -Key 'PowerThrottling' -Title 'Power Throttling' -Description 'Limites de energia do processador.' -OnTweak 'PowerThrottlingPerformance' -OffTweak 'PowerThrottlingDefault' -OffText 'Restaurar'))
-$tabManual.Flow.Controls.Add((New-ManualTweakRow -Key 'NetworkThrottling' -Title 'Network Throttling Index' -Description 'Politica de rede para menor latencia.' -OnTweak 'NetworkUltra' -OffTweak 'NetworkDefault' -OffText 'Restaurar'))
-$tabManual.Flow.Controls.Add((New-ManualTweakRow -Key 'SystemResponsiveness' -Title 'System Responsiveness' -Description 'Prioridade de resposta do sistema.' -OnTweak 'ResponsivenessUltra' -OffTweak 'ResponsivenessDefault' -OffText 'Restaurar'))
-$tabManual.Flow.Controls.Add((New-ManualTweakRow -Key 'GamesPriority' -Title 'Prioridade para Jogos' -Description 'Prioridade de GPU e CPU para Games.' -OnTweak 'GamesPriorityUltra' -OffTweak 'GamesPriorityDefault' -OffText 'Restaurar'))
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game Mode: Ativar' 'Ativa AutoGameModeEnabled e AllowAutoGameMode.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game Mode: Ativar' "Set-LynextManualTweak -Tweak GameModeOn"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game Mode: Desativar' 'Desativa AutoGameModeEnabled e AllowAutoGameMode.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game Mode: Desativar' "Set-LynextManualTweak -Tweak GameModeOff"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game DVR: Desativar' 'Desativa captura/gravação em segundo plano para reduzir overhead.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game DVR: Desativar' "Set-LynextManualTweak -Tweak GameDvrOff"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Game DVR: Ativar' 'Reativa captura/gravação em segundo plano do Windows/Xbox.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Game DVR: Ativar' "Set-LynextManualTweak -Tweak GameDvrOn"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'HAGS: Ativar' 'Ativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'HAGS: Ativar' "Set-LynextManualTweak -Tweak HagsOn"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'HAGS: Desativar' 'Desativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'HAGS: Desativar' "Set-LynextManualTweak -Tweak HagsOff"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Power Throttling: Performance' 'Desativa Power Throttling via registro para priorizar desempenho.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Power Throttling: Performance' "Set-LynextManualTweak -Tweak PowerThrottlingPerformance"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Power Throttling: Padrao' 'Remove o valor Lynext e deixa o Windows controlar Power Throttling.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Power Throttling: Padrao' "Set-LynextManualTweak -Tweak PowerThrottlingDefault"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Network Throttling: Ultra' 'Define NetworkThrottlingIndex como 0xffffffff.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Network Throttling: Ultra' "Set-LynextManualTweak -Tweak NetworkUltra"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Network Throttling: Padrao' 'Define NetworkThrottlingIndex como 10.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Network Throttling: Padrao' "Set-LynextManualTweak -Tweak NetworkDefault"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Responsiveness: Ultra' 'Define SystemResponsiveness como 10.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Responsiveness: Ultra' "Set-LynextManualTweak -Tweak ResponsivenessUltra"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Responsiveness: Padrao' 'Define SystemResponsiveness como 20.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Responsiveness: Padrao' "Set-LynextManualTweak -Tweak ResponsivenessDefault"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Prioridade Games: Ultra' 'Define GPU Priority 8 e Priority 6 para a tarefa Games.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Prioridade Games: Ultra' "Set-LynextManualTweak -Tweak GamesPriorityUltra"
+}))
+
+$tabManual.Flow.Controls.Add((New-ActionButton 'Prioridade Games: Padrao' 'Remove os valores Lynext para voltar ao padrao do Windows.' {
+    if (-not (Require-LynextAdmin)) { return }
+    Start-LynextTask 'Prioridade Games: Padrao' "Set-LynextManualTweak -Tweak GamesPriorityDefault"
+}))
 
 $tabBackup.Flow.Controls.Add((New-ActionButton 'Criar / atualizar backup' 'Guarda o estado atual para conseguir voltar depois com Reset geral.' {
     if (-not (Require-LynextAdmin)) { return }
@@ -1601,7 +1404,6 @@ else {
     Set-LynextStatus 'Sem administrador.' 'warn'
 }
 Update-ActiveModeLabel
-Update-LynextManualRows
 Write-LynextLog 'Lynext Performance Center iniciado'
 
 try {
