@@ -839,7 +839,7 @@ function CriarAbaCategoria {
     $tab.BackColor = $bgMain
     $tab.ForeColor = $fgMain
 
-    $painelEsquerdo = Criar-Painel 16 18 400 540 $bgPanel
+    $painelEsquerdo = Criar-Painel 16 18 450 590 $bgPanel
     $tab.Controls.Add($painelEsquerdo)
 
     $lblAuto = Criar-Label "Automatico" 16 14 11 $true $accent
@@ -848,19 +848,19 @@ function CriarAbaCategoria {
     $lblAutoSub = Criar-Label "Baixa direto para Downloads\Instaladores" 16 36 9 $false $fgSoft
     $painelEsquerdo.Controls.Add($lblAutoSub)
 
-    $listaAuto = Criar-Lista 16 60 365 180
+    $listaAuto = Criar-Lista 16 60 410 200
     $painelEsquerdo.Controls.Add($listaAuto)
 
-    $lblManual = Criar-Label "Manual" 16 260 11 $true $accent
+    $lblManual = Criar-Label "Manual" 16 286 11 $true $accent
     $painelEsquerdo.Controls.Add($lblManual)
 
-    $lblManualSub = Criar-Label "Abre a pagina oficial para baixar manualmente" 16 282 9 $false $fgSoft
+    $lblManualSub = Criar-Label "Abre a pagina oficial para baixar manualmente" 16 308 9 $false $fgSoft
     $painelEsquerdo.Controls.Add($lblManualSub)
 
-    $listaManual = Criar-Lista 16 306 365 180
+    $listaManual = Criar-Lista 16 332 410 200
     $painelEsquerdo.Controls.Add($listaManual)
 
-    $painelDireito = Criar-Painel 432 18 430 540 $bgPanel2
+    $painelDireito = Criar-Painel 482 18 480 590 $bgPanel2
     $tab.Controls.Add($painelDireito)
 
     $detTitulo = Criar-Label "Selecione um app" 16 18 15 $true $fgMain
@@ -878,22 +878,22 @@ function CriarAbaCategoria {
     $detDescTitulo = Criar-Label "O que ele faz" 16 140 11 $true $accent
     $painelDireito.Controls.Add($detDescTitulo)
 
-    $detDesc = Criar-TextoLeitura 16 166 395 185
+    $detDesc = Criar-TextoLeitura 16 166 445 175
     $detDesc.Text = "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
     $painelDireito.Controls.Add($detDesc)
 
-    $detStatusTitulo = Criar-Label "Status" 16 378 11 $true $accent
+    $detStatusTitulo = Criar-Label "Status do download" 16 368 11 $true $accent
     $painelDireito.Controls.Add($detStatusTitulo)
 
-    $detStatus = Criar-Label "Aguardando selecao." 16 404 9 $false $fgSoft
-    $detStatus.MaximumSize = New-Object System.Drawing.Size(395, 0)
+    $detStatus = Criar-Label "Aguardando selecao." 16 398 9 $false $fgSoft
+    $detStatus.MaximumSize = New-Object System.Drawing.Size(445, 0)
     $painelDireito.Controls.Add($detStatus)
 
-    $btnAcao = Criar-Botao "Selecionar app" 16 455 180 36
+    $btnAcao = Criar-Botao "Selecionar app" 16 532 200 36
     $btnAcao.Enabled = $false
     $painelDireito.Controls.Add($btnAcao)
 
-    $btnPasta = Criar-Botao "Abrir pasta" 212 455 140 36
+    $btnPasta = Criar-Botao "Abrir pasta" 236 532 160 36
     $painelDireito.Controls.Add($btnPasta)
 
     $itemsCategoria = $apps | Where-Object { $_.Categoria -eq $Categoria }
@@ -958,7 +958,7 @@ function CriarAbaCategoria {
 # =========================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Lynext - Downloads"
-$form.Size = New-Object System.Drawing.Size(920, 780)
+$form.Size = New-Object System.Drawing.Size(1040, 860)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
@@ -967,15 +967,15 @@ $form.Topmost = $true
 $form.BackColor = $bgMain
 $form.ForeColor = $fgMain
 
-$titulo = Criar-Label "Central de Downloads" 320 20 17 $true $fgMain
+$titulo = Criar-Label "Central de Downloads" 385 20 17 $true $fgMain
 $form.Controls.Add($titulo)
 
-$subtitulo = Criar-Label "Performance, monitoramento e suporte" 300 52 9 $false $fgSoft
+$subtitulo = Criar-Label "Performance, monitoramento e suporte" 365 52 9 $false $fgSoft
 $form.Controls.Add($subtitulo)
 
 $tabControl = New-Object System.Windows.Forms.TabControl
-$tabControl.Location = New-Object System.Drawing.Point(12, 92)
-$tabControl.Size = New-Object System.Drawing.Size(890, 600)
+$tabControl.Location = New-Object System.Drawing.Point(24, 92)
+$tabControl.Size = New-Object System.Drawing.Size(990, 650)
 $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $tabControl.BackColor = $tabBackColor
 $form.Controls.Add($tabControl)
@@ -993,19 +993,25 @@ foreach ($tab in $tabControl.TabPages) {
 # RODAPE
 # =========================
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = New-Object System.Drawing.Point(16, 710)
-$progress.Size = New-Object System.Drawing.Size(560, 18)
+$progress.Location = New-Object System.Drawing.Point(38, 770)
+$progress.Size = New-Object System.Drawing.Size(700, 22)
 $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
 $progress.Minimum = 0
 $progress.Maximum = 100
 $progress.Value = 0
 $form.Controls.Add($progress)
 
-$geral = Criar-Label "Pronto para iniciar." 16 732 9 $false $fgSoft
-$geral.MaximumSize = New-Object System.Drawing.Size(760, 0)
+$lblProgresso = Criar-Label "0%" 760 764 16 $true $accent
+$lblProgresso.AutoSize = $false
+$lblProgresso.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+$lblProgresso.Size = New-Object System.Drawing.Size(130, 34)
+$form.Controls.Add($lblProgresso)
+
+$geral = Criar-Label "Pronto para iniciar." 38 802 9 $false $fgSoft
+$geral.MaximumSize = New-Object System.Drawing.Size(850, 0)
 $form.Controls.Add($geral)
 
-$btnFechar = Criar-Botao "Fechar" 795 704 90 34
+$btnFechar = Criar-Botao "Fechar" 906 766 90 34
 $form.Controls.Add($btnFechar)
 
 $btnFechar.Add_Click({
@@ -1036,29 +1042,43 @@ $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 500
 
 $timer.Add_Tick({
-    $ativos = @($downloadsAtivos.Values | Where-Object { -not $_.Finalizado })
+    $ativosInfo = @($downloadsAtivos.GetEnumerator() | Where-Object { -not $_.Value.Finalizado })
+    $ativos = @($ativosInfo | ForEach-Object { $_.Value })
     $finalizados = @($downloadsAtivos.GetEnumerator() | Where-Object { $_.Value.Finalizado })
 
     if ($ativos.Count -eq 0) {
         if ($downloadsAtivos.Count -eq 0) {
             $progress.Value = 0
+            $lblProgresso.Text = "0%"
         }
         else {
             $ultimo = $finalizados | Select-Object -Last 1
             if ($null -ne $ultimo -and $ultimo.Value.Sucesso) {
                 $progress.Value = 100
+                $lblProgresso.Text = "100%"
+                $geral.Text = "$($ultimo.Key): $($statusApps[$ultimo.Key].Texto)"
+            }
+            elseif ($null -ne $ultimo) {
+                $lblProgresso.Text = "$($ultimo.Value.Progresso)%"
+                $geral.Text = "$($ultimo.Key): $($statusApps[$ultimo.Key].Texto)"
             }
         }
     }
     elseif ($ativos.Count -eq 1) {
+        $ativo = $ativosInfo[0]
+        $nomeAtivo = $ativo.Key
+        $statusAtivo = Get-AppStatusInfo $nomeAtivo
+
         $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
         $progress.Value = [math]::Min([int]$ativos[0].Progresso, 100)
-        $geral.Text = "Baixando: $($progress.Value)%"
+        $lblProgresso.Text = "$($progress.Value)%"
+        $geral.Text = "${nomeAtivo}: $($statusAtivo.Text)"
     }
     else {
         $media = [int](($ativos | Measure-Object -Property Progresso -Average).Average)
         $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
         $progress.Value = [math]::Min($media, 100)
+        $lblProgresso.Text = "$($progress.Value)%"
         $geral.Text = "$($ativos.Count) downloads em andamento - media $media%"
     }
 
