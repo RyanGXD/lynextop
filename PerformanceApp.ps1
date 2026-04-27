@@ -16,6 +16,8 @@ $script:LogDir = Join-Path $script:LynextRoot 'Logs'
 $null = New-Item -Path $script:LynextRoot -ItemType Directory -Force
 $null = New-Item -Path $script:LogDir -ItemType Directory -Force
 $script:LogFile = Join-Path $script:LogDir ("PerformanceApp_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+$script:IsAdmin = $false
+$script:AdminWarning = $null
 
 function Test-LynextAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -29,10 +31,16 @@ function Get-LynextPowerShell {
     return 'powershell.exe'
 }
 
-if (-not (Test-LynextAdmin)) {
+$script:IsAdmin = Test-LynextAdmin
+if (-not $script:IsAdmin) {
     $exe = Get-LynextPowerShell
-    Start-Process -FilePath $exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$script:ScriptPath`""
-    exit
+    try {
+        Start-Process -FilePath $exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$script:ScriptPath`"" -ErrorAction Stop
+        exit
+    }
+    catch {
+        $script:AdminWarning = "Nao consegui abrir como administrador: $($_.Exception.Message)"
+    }
 }
 
 # =========================================================
@@ -118,6 +126,19 @@ function Confirm-Lynext {
         [Windows.Forms.MessageBoxIcon]::Warning
     )
     return ($result -eq [Windows.Forms.DialogResult]::Yes)
+}
+
+function Require-LynextAdmin {
+    if ($script:IsAdmin) { return $true }
+
+    [Windows.Forms.MessageBox]::Show(
+        "Este ajuste precisa de administrador.`r`nFeche o app e abra o PowerShell como administrador, ou execute o arquivo com permissao elevada.",
+        'Lynext',
+        [Windows.Forms.MessageBoxButtons]::OK,
+        [Windows.Forms.MessageBoxIcon]::Warning
+    ) | Out-Null
+    Set-LynextStatus 'Abra como administrador para aplicar ajustes.' 'warn'
+    return $false
 }
 
 function Show-LynextInput {
@@ -860,15 +881,16 @@ $split = New-Object Windows.Forms.SplitContainer
 $split.Dock = 'Fill'
 $split.Orientation = 'Vertical'
 $split.SplitterDistance = 560
-$split.Panel1MinSize = 520
-$split.Panel2MinSize = 320
 $split.BackColor = $ui.Bg
 $split.Panel1.BackColor = $ui.Panel
 $split.Panel2.BackColor = $ui.Panel
 
 function Resize-LynextSplit {
     if (-not $split -or $split.Width -le 900) { return }
-    $split.SplitterDistance = [Math]::Max($split.Panel1MinSize, $split.Width - 340)
+    $target = [Math]::Max(520, $split.Width - 340)
+    $max = $split.Width - 260
+    if ($target -gt $max) { $target = $max }
+    if ($target -gt 0) { $split.SplitterDistance = $target }
 }
 
 $script:Tip = New-Object Windows.Forms.ToolTip
@@ -902,12 +924,8 @@ $tabGpu = New-Tab 'GPU' 'GPU e politicas' 'NVIDIA usa nvidia-smi quando disponiv
 $tabBackup = New-Tab 'Backup' 'Backup, reset e logs' 'Salve o estado atual antes dos presets. O reset volta energia, Windows e NVIDIA para o que foi salvo.'
 $tabs.TabPages.AddRange(@($tabPresets.Page, $tabTuning.Page, $tabGpu.Page, $tabBackup.Page))
 function Resize-LynextTabs {
-    if (-not $tabs -or $tabs.TabCount -le 0) { return }
-    $width = [Math]::Max(120, [Math]::Floor(($tabs.ClientSize.Width - 8) / $tabs.TabCount))
-    $tabs.ItemSize = New-Object Drawing.Size($width, 30)
-    $tabs.Invalidate()
+    if ($tabs) { $tabs.Invalidate() }
 }
-$tabs.Add_Resize({ Resize-LynextTabs })
 Resize-LynextTabs
 $split.Panel1.Controls.Add($tabs)
 
@@ -974,6 +992,7 @@ $script:Form.Add_Resize({ Resize-LynextSplit; Resize-LynextTabs })
 $backupPath = Escape-SingleQuote $script:BackupFile
 
 $tabPresets.Flow.Controls.Add((New-ActionButton 'Ultra completo' 'Maximo desempenho: cria/ativa plano Ultra, desliga DVR, liga Game Mode/HAGS e tenta elevar limite NVIDIA.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Ultra completo' @"
 if (-not (Test-Path '$backupPath')) { Save-LynextBackup -BackupFile '$backupPath' }
 Set-LynextPowerProfile -Profile Ultra
@@ -984,6 +1003,7 @@ if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Ultra -BackupFile
 }))
 
 $tabPresets.Flow.Controls.Add((New-ActionButton 'Lite equilibrado' 'Perfil diario: bom desempenho com consumo menor, Windows otimizado e NVIDIA voltando ao limite salvo.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Lite equilibrado' @"
 if (-not (Test-Path '$backupPath')) { Save-LynextBackup -BackupFile '$backupPath' }
 Set-LynextPowerProfile -Profile Lite
@@ -994,6 +1014,7 @@ if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Lite -BackupFile 
 }))
 
 $tabPresets.Flow.Controls.Add((New-ActionButton 'Termico / quieto' 'Para notebook quente ou barulhento: reduz boost agressivo e prioriza temperatura/estabilidade.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Termico / quieto' "Set-LynextPowerProfile -Profile Thermal"
 }))
 
@@ -1002,26 +1023,32 @@ $tabPresets.Flow.Controls.Add((New-ActionButton 'Resumo do sistema' 'Mostra Wind
 }))
 
 $tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Ultra' 'Somente energia: CPU sempre em alta performance e suspensoes economicas reduzidas.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Energia Ultra' "Set-LynextPowerProfile -Profile Ultra"
 }))
 
 $tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Lite' 'Somente energia: mantem resposta boa sem travar tudo no maximo o tempo todo.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Energia Lite' "Set-LynextPowerProfile -Profile Lite"
 }))
 
 $tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Termica' 'Somente energia: reduz boost e ajuda a controlar temperatura, ruido e bateria.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Energia Termica' "Set-LynextPowerProfile -Profile Thermal"
 }))
 
 $tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Ultra' 'Somente Windows: Game Mode/HAGS ligados, DVR desligado e prioridades de jogos mais agressivas.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Windows Ultra' "Set-LynextWindowsProfile -Profile Ultra"
 }))
 
 $tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Lite' 'Somente Windows: remove gravacao em segundo plano e usa prioridades mais moderadas.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Windows Lite' "Set-LynextWindowsProfile -Profile Lite"
 }))
 
 $tabTuning.Flow.Controls.Add((New-ActionButton 'Reset Windows' 'Volta apenas os ajustes de registro do Windows usando o backup salvo.' {
+    if (-not (Require-LynextAdmin)) { return }
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -1042,10 +1069,12 @@ if (-not `$smi) { 'nvidia-smi nao encontrado.'; return }
 }))
 
 $tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Ultra' 'Tenta aplicar o maior power limit permitido pela GPU/driver.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'NVIDIA Ultra' "Set-NvidiaProfile -Profile Ultra -BackupFile '$backupPath'"
 }))
 
 $tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e volta ao power limit padrao guardado no backup.' {
+    if (-not (Require-LynextAdmin)) { return }
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -1054,6 +1083,7 @@ $tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e
 }))
 
 $tabGpu.Flow.Controls.Add((New-ActionButton 'Power limit manual' 'Digite um limite em Watts. Use apenas valores suportados pela sua GPU.' {
+    if (-not (Require-LynextAdmin)) { return }
     $watts = Show-LynextInput -Title 'Power limit NVIDIA' -Label 'Valor em Watts:' -DefaultValue '200'
     if ([string]::IsNullOrWhiteSpace($watts)) { return }
     if ($watts -notmatch '^\d+(\.\d+)?$') {
@@ -1088,10 +1118,12 @@ O tuning automatico pesado fica limitado a NVIDIA por depender do nvidia-smi.
 }))
 
 $tabBackup.Flow.Controls.Add((New-ActionButton 'Criar / atualizar backup' 'Guarda o estado atual para conseguir voltar depois com Reset geral.' {
+    if (-not (Require-LynextAdmin)) { return }
     Start-LynextTask 'Criar / atualizar backup' "Save-LynextBackup -BackupFile '$backupPath'"
 }))
 
 $tabBackup.Flow.Controls.Add((New-ActionButton 'Reset geral' 'Volta plano de energia, registros do Windows e ajustes NVIDIA para o backup.' {
+    if (-not (Require-LynextAdmin)) { return }
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -1135,7 +1167,13 @@ $timer.Start()
 Add-Output 'Lynext Performance Center iniciado.'
 Add-Output "Backup: $script:BackupFile"
 Add-Output "Log: $script:LogFile"
-Set-LynextStatus 'Pronto' 'ok'
+if ($script:AdminWarning) {
+    Add-Output $script:AdminWarning
+    Set-LynextStatus 'Aberto sem administrador.' 'warn'
+}
+else {
+    Set-LynextStatus 'Pronto' 'ok'
+}
 Update-ActiveModeLabel
 Write-LynextLog 'Lynext Performance Center iniciado'
 
