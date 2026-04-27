@@ -1,4 +1,25 @@
 #requires -version 5.1
+param(
+    [switch]$NoConsole
+)
+
+if (-not $NoConsole) {
+    $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+    $exe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path $exe)) { $exe = 'powershell.exe' }
+
+    try {
+        Start-Process -FilePath $exe -WindowStyle Hidden -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', "`"$scriptPath`"",
+            '-NoConsole'
+        ) | Out-Null
+        exit 0
+    }
+    catch {}
+}
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -10,11 +31,20 @@ $Host.UI.RawUI.WindowTitle = 'Lynext - Performance Center'
 # Admin / paths
 # =========================================================
 $script:ScriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
-$script:LynextRoot = Join-Path $env:ProgramData 'Lynext'
+$script:LynextRoot = Join-Path $env:LOCALAPPDATA 'Lynext'
 $script:BackupFile = Join-Path $script:LynextRoot 'performance_backup.json'
 $script:LogDir = Join-Path $script:LynextRoot 'Logs'
-$null = New-Item -Path $script:LynextRoot -ItemType Directory -Force
-$null = New-Item -Path $script:LogDir -ItemType Directory -Force
+try {
+    $null = New-Item -Path $script:LynextRoot -ItemType Directory -Force -ErrorAction Stop
+    $null = New-Item -Path $script:LogDir -ItemType Directory -Force -ErrorAction Stop
+}
+catch {
+    $script:LynextRoot = Join-Path $env:TEMP 'Lynext'
+    $script:BackupFile = Join-Path $script:LynextRoot 'performance_backup.json'
+    $script:LogDir = Join-Path $script:LynextRoot 'Logs'
+    $null = New-Item -Path $script:LynextRoot -ItemType Directory -Force
+    $null = New-Item -Path $script:LogDir -ItemType Directory -Force
+}
 $script:LogFile = Join-Path $script:LogDir ("PerformanceApp_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 $script:IsAdmin = $false
 
@@ -492,7 +522,7 @@ function Set-NvidiaProfile {
 
     $smi = Get-NvidiaSmiPath
     if (-not $smi) {
-        'nvidia-smi nao encontrado. Ajustes automaticos de NVIDIA ignorados.'
+        'NVIDIA: nvidia-smi nao encontrado; etapa de GPU pulada.'
         return
     }
 
@@ -831,8 +861,8 @@ function New-Tab {
 # =========================================================
 $script:Form = New-Object Windows.Forms.Form
 $script:Form.Text = 'Lynext - Performance Center'
-$script:Form.MinimumSize = New-Object Drawing.Size(980, 640)
-$script:Form.Size = New-Object Drawing.Size(1160, 720)
+$script:Form.MinimumSize = New-Object Drawing.Size(1080, 760)
+$script:Form.Size = New-Object Drawing.Size(1220, 820)
 $script:Form.StartPosition = 'CenterScreen'
 $script:Form.BackColor = $ui.Bg
 $script:Form.ForeColor = $ui.Text
@@ -845,7 +875,7 @@ $root.RowCount = 3
 $root.Padding = New-Object Windows.Forms.Padding(18)
 $root.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 72))) | Out-Null
 $root.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Percent, 100))) | Out-Null
-$root.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 34))) | Out-Null
+$root.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 58))) | Out-Null
 
 $header = New-Object Windows.Forms.TableLayoutPanel
 $header.Dock = 'Fill'
@@ -924,13 +954,14 @@ $split.Panel2.Controls.Add($outPanel)
 
 $footer = New-Object Windows.Forms.TableLayoutPanel
 $footer.Dock = 'Fill'
-$footer.ColumnCount = 4
-$footer.RowCount = 1
+$footer.ColumnCount = 3
+$footer.RowCount = 2
 $footer.BackColor = $ui.Bg
 $footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 250))) | Out-Null
-$footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 240))) | Out-Null
-$footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 260))) | Out-Null
+$footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 250))) | Out-Null
 $footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$footer.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 24))) | Out-Null
+$footer.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 28))) | Out-Null
 
 $script:lblStatus = New-Label 'Status: Pronto' $font.Btn $ui.Accent
 $script:lblStatus.Dock = 'Fill'
@@ -938,15 +969,18 @@ $script:lblMode = New-Label 'Modo ativo: verificando...' $font.Btn $ui.Warn
 $script:lblMode.Dock = 'Fill'
 $script:Progress = New-Object Windows.Forms.ProgressBar
 $script:Progress.Dock = 'Fill'
-$script:Progress.Margin = New-Object Windows.Forms.Padding(0, 7, 12, 7)
+$script:Progress.Margin = New-Object Windows.Forms.Padding(8, 5, 12, 5)
 $script:Progress.Style = 'Blocks'
-$logLabel = New-Label ("Log: $script:LogFile") $font.Text $ui.Muted
+$logLabel = New-Label ("Log: " + (Split-Path -Leaf $script:LogFile)) $font.Text $ui.Muted
 $logLabel.Dock = 'Fill'
+$logLabel.AutoSize = $false
+$logLabel.TextAlign = 'MiddleLeft'
 
 $footer.Controls.Add($script:lblStatus, 0, 0)
 $footer.Controls.Add($script:lblMode, 1, 0)
-$footer.Controls.Add($script:Progress, 2, 0)
-$footer.Controls.Add($logLabel, 3, 0)
+$footer.Controls.Add($logLabel, 2, 0)
+$footer.Controls.Add($script:Progress, 0, 1)
+$footer.SetColumnSpan($script:Progress, 3)
 
 $root.Controls.Add($header, 0, 0)
 $root.Controls.Add($split, 0, 1)
@@ -1036,7 +1070,7 @@ Restore-RegistryFromBackup -Backup `$backup
 $tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA estado' 'Mostra limites de energia e clocks reportados pelo nvidia-smi.' {
     Start-LynextTask 'NVIDIA estado' @"
 `$smi = Get-NvidiaSmiPath
-if (-not `$smi) { 'nvidia-smi nao encontrado.'; return }
+if (-not `$smi) { 'NVIDIA: nvidia-smi nao encontrado; informacoes indisponiveis.'; return }
 & `$smi -q -d POWER,CLOCK
 "@
 }))
@@ -1066,7 +1100,7 @@ $tabGpu.Flow.Controls.Add((New-ActionButton 'Power limit manual' 'Digite um limi
     $safeWatts = Escape-SingleQuote $watts
     Start-LynextTask 'Power limit manual' @"
 `$smi = Get-NvidiaSmiPath
-if (-not `$smi) { throw 'nvidia-smi nao encontrado.' }
+if (-not `$smi) { throw 'NVIDIA: nvidia-smi nao encontrado. Nao foi possivel ajustar power limit.' }
 & `$smi -pl ([double]'$safeWatts') | Out-Null
 'Power limit ajustado para $safeWatts W'
 "@
@@ -1104,7 +1138,7 @@ $tabBackup.Flow.Controls.Add((New-ActionButton 'Reset geral' 'Volta plano de ene
     Start-LynextTask 'Reset geral' "Restore-LynextBackup -BackupFile '$backupPath'" -Confirm -ConfirmMessage 'Deseja restaurar os ajustes pelo backup salvo?'
 }))
 
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Abrir pasta Lynext' 'Abre ProgramData\Lynext.' {
+$tabBackup.Flow.Controls.Add((New-ActionButton 'Abrir pasta Lynext' 'Abre a pasta local do Lynext no seu usuario.' {
     Start-Process explorer.exe $script:LynextRoot
     Set-LynextStatus 'Pasta Lynext aberta.' 'ok'
 }))
@@ -1150,4 +1184,21 @@ else {
 Update-ActiveModeLabel
 Write-LynextLog 'Lynext Performance Center iniciado'
 
-[void]$script:Form.ShowDialog()
+try {
+    [void]$script:Form.ShowDialog()
+    exit 0
+}
+catch {
+    try {
+        $fatalLog = Join-Path $script:LogDir 'PerformanceApp_fatal.log'
+        Add-Content -Path $fatalLog -Encoding UTF8 -Value ("[{0}] {1}`r`n{2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $_.Exception.Message, $_.ScriptStackTrace)
+    }
+    catch {}
+    [Windows.Forms.MessageBox]::Show(
+        "O Lynext encontrou um erro ao abrir.`r`n$($_.Exception.Message)",
+        'Lynext',
+        [Windows.Forms.MessageBoxButtons]::OK,
+        [Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+    exit 1
+}
