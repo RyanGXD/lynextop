@@ -1,4 +1,4 @@
-#ryangxd 
+#requires -version 5.1
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -182,7 +182,7 @@ function Show-LynextInput {
 # Runtime used by background actions
 # =========================================================
 $script:Runtime = @'
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 
 $GuidBalanced = '381b4222-f694-41f0-9685-ff5bb260df2e'
@@ -223,8 +223,13 @@ function Test-RegValue {
 
 function Set-RegDwordSafe {
     param([string]$Path, [string]$Name, [UInt32]$Value)
-    if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
-    New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType DWord -Force | Out-Null
+    try {
+        if (-not (Test-Path $Path)) { New-Item -Path $Path -Force -ErrorAction Stop | Out-Null }
+        New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+    }
+    catch {
+        "Aviso: nao consegui ajustar $Path\$Name ($($_.Exception.Message))"
+    }
 }
 
 function Remove-RegValueSafe {
@@ -319,7 +324,7 @@ function Get-IsLaptop {
 
 function Get-GpuVendor {
     try {
-        $names = (Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join ' | '
+        $names = (Get-CimInstance Win32_VideoController -ErrorAction Stop | Select-Object -ExpandProperty Name) -join ' | '
         if ($names -match 'NVIDIA') { return 'NVIDIA' }
         if ($names -match 'AMD|Radeon') { return 'AMD' }
         if ($names -match 'Intel') { return 'Intel' }
@@ -526,12 +531,12 @@ function Restore-LynextBackup {
 }
 
 function Show-LynextSummary {
-    $os = Get-CimInstance Win32_OperatingSystem
-    $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-    $gpus = Get-CimInstance Win32_VideoController
+    try { $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop } catch { $os = $null }
+    try { $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1 } catch { $cpu = $null }
+    try { $gpus = @(Get-CimInstance Win32_VideoController -ErrorAction Stop) } catch { $gpus = @() }
 
-    'Windows: ' + $os.Caption + ' build ' + $os.BuildNumber
-    'CPU: ' + $cpu.Name
+    if ($os) { 'Windows: ' + $os.Caption + ' build ' + $os.BuildNumber } else { 'Windows: nao identificado' }
+    if ($cpu) { 'CPU: ' + $cpu.Name } else { 'CPU: nao identificada' }
     'GPU principal: ' + (Get-GpuVendor)
     'Notebook: ' + (Get-IsLaptop)
     'Modern Standby: ' + (Test-ModernStandby)
@@ -556,8 +561,13 @@ function Show-LynextSummary {
     }
     ''
     'GPUs:'
-    foreach ($gpu in $gpus) {
-        " - $($gpu.Name) | Driver $($gpu.DriverVersion)"
+    if ($gpus.Count -eq 0) {
+        ' - Nenhuma GPU listada por WMI/CIM.'
+    }
+    else {
+        foreach ($gpu in $gpus) {
+            " - $($gpu.Name) | Driver $($gpu.DriverVersion)"
+        }
     }
 }
 '@
@@ -565,9 +575,17 @@ function Show-LynextSummary {
 function New-TaskCode {
     param([string]$Body)
     return @"
+try {
 $($script:Runtime)
 
 $Body
+
+    exit 0
+}
+catch {
+    [Console]::Error.WriteLine(`$_.Exception.Message)
+    exit 1
+}
 "@
 }
 
@@ -670,6 +688,7 @@ function Read-TaskDelta {
 function Poll-LynextTask {
     if (-not $script:Task) { return }
     $task = $script:Task
+    try { $task.Process.Refresh() } catch {}
 
     $out = Read-TaskDelta -Path $task.OutFile -Offset $task.LastOutLen
     if ($out.Text) { Add-Output $out.Text.TrimEnd() }
@@ -682,8 +701,20 @@ function Poll-LynextTask {
 
     if (-not $task.Process.HasExited) { return }
 
-    $exit = $task.Process.ExitCode
-    if ($exit -eq 0 -and ((Test-Path $task.ErrFile) -and (Get-Item $task.ErrFile).Length -gt 0)) {
+    try {
+        $task.Process.Refresh()
+        $exit = $task.Process.ExitCode
+    }
+    catch {
+        $exit = $null
+    }
+
+    $hasErrorText = ((Test-Path $task.ErrFile) -and (Get-Item $task.ErrFile).Length -gt 0)
+    if ($null -eq $exit -and -not $hasErrorText) {
+        $exit = 0
+    }
+
+    if ($exit -eq 0 -and $hasErrorText) {
         Set-LynextStatus "$($task.Name) concluido com avisos." 'warn'
         Write-LynextLog "WARN: $($task.Name)"
     }
@@ -829,9 +860,16 @@ $split = New-Object Windows.Forms.SplitContainer
 $split.Dock = 'Fill'
 $split.Orientation = 'Vertical'
 $split.SplitterDistance = 560
+$split.Panel1MinSize = 520
+$split.Panel2MinSize = 320
 $split.BackColor = $ui.Bg
 $split.Panel1.BackColor = $ui.Panel
 $split.Panel2.BackColor = $ui.Panel
+
+function Resize-LynextSplit {
+    if (-not $split -or $split.Width -le 900) { return }
+    $split.SplitterDistance = [Math]::Max($split.Panel1MinSize, $split.Width - 340)
+}
 
 $script:Tip = New-Object Windows.Forms.ToolTip
 $script:Tip.AutoPopDelay = 9000
@@ -842,7 +880,7 @@ $tabs = New-Object Windows.Forms.TabControl
 $tabs.Dock = 'Fill'
 $tabs.Font = $font.Text
 $tabs.DrawMode = [Windows.Forms.TabDrawMode]::OwnerDrawFixed
-$tabs.ItemSize = New-Object Drawing.Size(140, 28)
+$tabs.ItemSize = New-Object Drawing.Size(140, 30)
 $tabs.SizeMode = 'Fixed'
 $tabs.Add_DrawItem({
     param($sender, $e)
@@ -863,6 +901,14 @@ $tabTuning = New-Tab 'Energia + Windows' 'Ajustes separados' 'Aqui voce mexe em 
 $tabGpu = New-Tab 'GPU' 'GPU e politicas' 'NVIDIA usa nvidia-smi quando disponivel. AMD e Intel ficam com diagnostico e recomendacoes para evitar tuning arriscado.'
 $tabBackup = New-Tab 'Backup' 'Backup, reset e logs' 'Salve o estado atual antes dos presets. O reset volta energia, Windows e NVIDIA para o que foi salvo.'
 $tabs.TabPages.AddRange(@($tabPresets.Page, $tabTuning.Page, $tabGpu.Page, $tabBackup.Page))
+function Resize-LynextTabs {
+    if (-not $tabs -or $tabs.TabCount -le 0) { return }
+    $width = [Math]::Max(120, [Math]::Floor(($tabs.ClientSize.Width - 8) / $tabs.TabCount))
+    $tabs.ItemSize = New-Object Drawing.Size($width, 30)
+    $tabs.Invalidate()
+}
+$tabs.Add_Resize({ Resize-LynextTabs })
+Resize-LynextTabs
 $split.Panel1.Controls.Add($tabs)
 
 $outPanel = New-Object Windows.Forms.TableLayoutPanel
@@ -919,6 +965,8 @@ $root.Controls.Add($header, 0, 0)
 $root.Controls.Add($split, 0, 1)
 $root.Controls.Add($footer, 0, 2)
 $script:Form.Controls.Add($root)
+$script:Form.Add_Shown({ Resize-LynextSplit; Resize-LynextTabs })
+$script:Form.Add_Resize({ Resize-LynextSplit; Resize-LynextTabs })
 
 # =========================================================
 # Actions
@@ -926,11 +974,8 @@ $script:Form.Controls.Add($root)
 $backupPath = Escape-SingleQuote $script:BackupFile
 
 $tabPresets.Flow.Controls.Add((New-ActionButton 'Ultra completo' 'Maximo desempenho: cria/ativa plano Ultra, desliga DVR, liga Game Mode/HAGS e tenta elevar limite NVIDIA.' {
-    if (-not (Test-Path $script:BackupFile)) {
-        Start-LynextTask 'Criar backup inicial' "Save-LynextBackup -BackupFile '$backupPath'"
-        return
-    }
     Start-LynextTask 'Ultra completo' @"
+if (-not (Test-Path '$backupPath')) { Save-LynextBackup -BackupFile '$backupPath' }
 Set-LynextPowerProfile -Profile Ultra
 Set-LynextWindowsProfile -Profile Ultra
 if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Ultra -BackupFile '$backupPath' } else { 'GPU nao NVIDIA: ajuste automatico pesado ignorado.' }
@@ -939,11 +984,8 @@ if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Ultra -BackupFile
 }))
 
 $tabPresets.Flow.Controls.Add((New-ActionButton 'Lite equilibrado' 'Perfil diario: bom desempenho com consumo menor, Windows otimizado e NVIDIA voltando ao limite salvo.' {
-    if (-not (Test-Path $script:BackupFile)) {
-        Start-LynextTask 'Criar backup inicial' "Save-LynextBackup -BackupFile '$backupPath'"
-        return
-    }
     Start-LynextTask 'Lite equilibrado' @"
+if (-not (Test-Path '$backupPath')) { Save-LynextBackup -BackupFile '$backupPath' }
 Set-LynextPowerProfile -Profile Lite
 Set-LynextWindowsProfile -Profile Lite
 if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Lite -BackupFile '$backupPath' } else { 'GPU nao NVIDIA: mantendo politica conservadora.' }
