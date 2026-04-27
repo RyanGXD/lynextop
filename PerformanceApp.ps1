@@ -1,25 +1,4 @@
 #requires -version 5.1
-param(
-    [switch]$NoConsole
-)
-
-if (-not $NoConsole) {
-    $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
-    $exe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    if (-not (Test-Path $exe)) { $exe = 'powershell.exe' }
-
-    try {
-        Start-Process -FilePath $exe -WindowStyle Hidden -ArgumentList @(
-            '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
-            '-File', "`"$scriptPath`"",
-            '-NoConsole'
-        ) | Out-Null
-        exit 0
-    }
-    catch {}
-}
-
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
