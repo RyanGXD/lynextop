@@ -1228,7 +1228,7 @@ function Resolver-DownloadInfo {
                 Arquivo             = $App.Arquivo
                 Sha256              = ""
                 PublishersPermitidos = @("Oracle")
-                DominiosPermitidos   = @("java.com", "javadl.oracle.com", "download.oracle.com")
+                DominiosPermitidos   = @("java.com", "javadl.oracle.com", "download.oracle.com", "sdlc-esd.oracle.com", "javadl.sun.com")
             }
         }
         "AdobeReaderLatest" {
