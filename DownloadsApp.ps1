@@ -1000,7 +1000,8 @@ function Iniciar-DownloadExterno {
         $download = [PSCustomObject]@{
             Cliente     = $client
             Arquivo     = $saida
-            Url         = $urlFinal
+            Url         = $Url
+            UrlFinal    = $urlFinal
             Finalizado  = $false
             Sucesso     = $false
             Progresso   = 0
@@ -1120,16 +1121,20 @@ function Iniciar-DownloadExterno {
             $client.Dispose()
         }.GetNewClosure())
 
-        $client.DownloadFileAsync([Uri]$urlFinal, $saida)
+        $client.DownloadFileAsync([Uri]$Url, $saida)
         return $true
     }
     catch {
+        $mensagemErro = $_.Exception.Message
+
         $statusApps[$Nome] = [PSCustomObject]@{
-            Texto = "Erro [X]"
+            Texto = "Erro ao iniciar [X]`r`n$mensagemErro"
             Tipo  = "erro"
         }
 
-        $geral.Text = "Erro ao iniciar download de ${Nome}: $($_.Exception.Message)"
+        Escrever-LogAuditoria "$Nome | Erro ao iniciar: $mensagemErro"
+
+        $geral.Text = "Erro ao iniciar download de ${Nome}: $mensagemErro"
         return $false
     }
 }
@@ -1425,7 +1430,9 @@ function ExecutarAcaoDoApp {
         $geral.Text = "Baixando $($app.Nome)..."
     }
     else {
-        $geral.Text = "Falha ao iniciar $($app.Nome)."
+        $statusErro = Get-AppStatusInfo $app.Nome
+        $erroDetalhado = $statusErro.Text -replace "`r`n", " | "
+        $geral.Text = "$($app.Nome): $erroDetalhado"
     }
 
     AtualizarDetalhesCategoria $Categoria
