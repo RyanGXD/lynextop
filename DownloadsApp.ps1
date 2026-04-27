@@ -832,27 +832,37 @@ function Get-LatestJavaAsset {
             -UseBasicParsing `
             -ErrorAction Stop
 
-        $links = [regex]::Matches(
+        $match64 = [regex]::Matches(
             $pagina.Content,
-            '(?is)<a\b[^>]*href="([^"]*AutoDL\?BundleId=[^"]+)"[^>]*>(.*?)</a>'
-        )
+            '(?is)<a\b[^>]*href="([^"]*AutoDL\?BundleId=[^"]+)"[^>]*>Windows\s+Off-?line\s+\(64\s*bits\)</a>'
+        ) | Select-Object -First 1
 
-        foreach ($link in $links) {
-            $texto = [regex]::Replace($link.Groups[2].Value, '<.*?>', '')
-            $texto = [System.Net.WebUtility]::HtmlDecode($texto)
+        if (-not $match64) {
+            $match64 = [regex]::Matches(
+                $pagina.Content,
+                '(?is)<a\b[^>]*href="([^"]*AutoDL\?BundleId=[^"]+)"[^>]*title="[^"]*Windows\s+\(64\s*bits\)[^"]*"'
+            ) | Select-Object -First 1
+        }
 
-            if ($texto -match 'Windows\s+Off-?line\s+\(64\s*bits\)') {
-                $url = [System.Net.WebUtility]::HtmlDecode($link.Groups[1].Value)
+        if ($match64) {
+            $url = [System.Net.WebUtility]::HtmlDecode($match64.Groups[1].Value)
 
-                if ($url -notmatch '^https?://') {
+            if ($url -match '^//') {
+                $url = "https:$url"
+            }
+            elseif ($url -notmatch '^https?://') {
+                if ($url.StartsWith("/")) {
                     $url = "https://www.java.com$url"
                 }
-
-                return [PSCustomObject]@{
-                    Url         = $url
-                    NomeArquivo = "JavaSetup64.exe"
-                    Versao      = "Atual"
+                else {
+                    $url = "https://$url"
                 }
+            }
+
+            return [PSCustomObject]@{
+                Url         = $url
+                NomeArquivo = "JavaSetup64.exe"
+                Versao      = "Atual"
             }
         }
 
@@ -1146,7 +1156,7 @@ function Resolver-DownloadInfo {
                 Arquivo             = $App.Arquivo
                 Sha256              = ""
                 PublishersPermitidos = @()
-                DominiosPermitidos   = @("github.com", "objects.githubusercontent.com")
+                DominiosPermitidos   = @("github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com", "githubusercontent.com")
             }
         }
         "ISLCLatest" {
