@@ -307,6 +307,58 @@ function Criar-Lista {
     $list.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     $list.IntegralHeight = $false
     $list.DisplayMember = "Nome"
+    $list.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+    $list.ItemHeight = 24
+
+    $list.Add_DrawItem({
+        param($sender, $e)
+
+        if ($e.Index -lt 0) {
+            return
+        }
+
+        $item = $sender.Items[$e.Index]
+        $status = Get-AppStatusInfo $item.Nome
+        $dotColor = Get-AppStatusColor $status.Tipo
+
+        $isSelected = (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected)
+        $backBrush = if ($isSelected) {
+            New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(35,115,190))
+        }
+        else {
+            New-Object System.Drawing.SolidBrush($sender.BackColor)
+        }
+
+        $textBrush = if ($isSelected) {
+            New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+        }
+        else {
+            New-Object System.Drawing.SolidBrush($sender.ForeColor)
+        }
+
+        $dotBrush = New-Object System.Drawing.SolidBrush($dotColor)
+
+        try {
+            $e.Graphics.FillRectangle($backBrush, $e.Bounds)
+            $dotRect = New-Object System.Drawing.Rectangle(($e.Bounds.Left + 8), ($e.Bounds.Top + 7), 10, 10)
+            $e.Graphics.FillEllipse($dotBrush, $dotRect)
+
+            $textRect = New-Object System.Drawing.RectangleF(
+                ($e.Bounds.Left + 26),
+                ($e.Bounds.Top + 3),
+                ($e.Bounds.Width - 32),
+                ($e.Bounds.Height - 4)
+            )
+
+            $e.Graphics.DrawString($item.Nome, $sender.Font, $textBrush, $textRect)
+        }
+        finally {
+            $backBrush.Dispose()
+            $textBrush.Dispose()
+            $dotBrush.Dispose()
+        }
+    }.GetNewClosure())
+
     return $list
 }
 
@@ -333,7 +385,7 @@ function Criar-TextoLeitura {
 
 function Set-Status {
     param(
-        [System.Windows.Forms.Label]$Label,
+        [System.Windows.Forms.Control]$Label,
         [string]$Texto,
         [string]$Tipo = "normal"
     )
@@ -346,6 +398,25 @@ function Set-Status {
         "andando" { $Label.ForeColor = $runColor }
         "manual"  { $Label.ForeColor = $manualColor }
         default   { $Label.ForeColor = $fgSoft }
+    }
+}
+
+function Get-AppStatusColor {
+    param([string]$Tipo)
+
+    switch ($Tipo) {
+        "ok"      { return $okColor }
+        "andando" { return $runColor }
+        "manual"  { return $manualColor }
+        default   { return $errColor }
+    }
+}
+
+function AtualizarIndicadoresListas {
+    foreach ($categoria in $categoryViews.Keys) {
+        $view = $categoryViews[$categoria]
+        $view.ListaAuto.Invalidate()
+        $view.ListaManual.Invalidate()
     }
 }
 
@@ -558,7 +629,7 @@ function Iniciar-DownloadExterno {
             $velTxt = if ($download.Velocidade -gt 0) { "$(Formatar-Tamanho $download.Velocidade)/s" } else { "--" }
 
             $statusApps[$Nome] = [PSCustomObject]@{
-                Texto = "$($download.Progresso)% - $baixadoTxt / $totalTxt - $velTxt - ETA $($download.Eta)"
+                Texto = "$($download.Progresso)% concluido`r`nBaixado: $baixadoTxt de $totalTxt`r`nVelocidade: $velTxt | Tempo restante: $($download.Eta)"
                 Tipo  = "andando"
             }
         }.GetNewClosure())
@@ -587,8 +658,9 @@ function Iniciar-DownloadExterno {
             elseif ((Test-Path $download.Arquivo) -and ((Get-Item $download.Arquivo).Length -gt 0)) {
                 $download.Sucesso = $true
                 $download.Progresso = 100
+                $tamanhoFinal = Formatar-Tamanho ((Get-Item $download.Arquivo).Length)
                 $statusApps[$Nome] = [PSCustomObject]@{
-                    Texto = "100% - Concluido [OK]"
+                    Texto = "100% concluido [OK]`r`nArquivo salvo em: $($download.Arquivo)`r`nTamanho final: $tamanhoFinal"
                     Tipo  = "ok"
                 }
             }
@@ -886,7 +958,9 @@ function CriarAbaCategoria {
     $painelDireito.Controls.Add($detStatusTitulo)
 
     $detStatus = Criar-Label "Aguardando selecao." 16 398 9 $false $fgSoft
-    $detStatus.MaximumSize = New-Object System.Drawing.Size(445, 0)
+    $detStatus.AutoSize = $false
+    $detStatus.Size = New-Object System.Drawing.Size(445, 105)
+    $detStatus.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
     $painelDireito.Controls.Add($detStatus)
 
     $btnAcao = Criar-Botao "Selecionar app" 16 532 200 36
@@ -958,7 +1032,7 @@ function CriarAbaCategoria {
 # =========================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Lynext - Downloads"
-$form.Size = New-Object System.Drawing.Size(1040, 860)
+$form.ClientSize = New-Object System.Drawing.Size(1100, 880)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
@@ -967,10 +1041,10 @@ $form.Topmost = $true
 $form.BackColor = $bgMain
 $form.ForeColor = $fgMain
 
-$titulo = Criar-Label "Central de Downloads" 385 20 17 $true $fgMain
+$titulo = Criar-Label "Central de Downloads" 415 20 17 $true $fgMain
 $form.Controls.Add($titulo)
 
-$subtitulo = Criar-Label "Performance, monitoramento e suporte" 365 52 9 $false $fgSoft
+$subtitulo = Criar-Label "Performance, monitoramento e suporte" 395 52 9 $false $fgSoft
 $form.Controls.Add($subtitulo)
 
 $tabControl = New-Object System.Windows.Forms.TabControl
@@ -993,25 +1067,27 @@ foreach ($tab in $tabControl.TabPages) {
 # RODAPE
 # =========================
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = New-Object System.Drawing.Point(38, 770)
-$progress.Size = New-Object System.Drawing.Size(700, 22)
+$progress.Location = New-Object System.Drawing.Point(38, 768)
+$progress.Size = New-Object System.Drawing.Size(760, 24)
 $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
 $progress.Minimum = 0
 $progress.Maximum = 100
 $progress.Value = 0
 $form.Controls.Add($progress)
 
-$lblProgresso = Criar-Label "0%" 760 764 16 $true $accent
+$lblProgresso = Criar-Label "0%" 820 761 17 $true $accent
 $lblProgresso.AutoSize = $false
 $lblProgresso.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
 $lblProgresso.Size = New-Object System.Drawing.Size(130, 34)
 $form.Controls.Add($lblProgresso)
 
-$geral = Criar-Label "Pronto para iniciar." 38 802 9 $false $fgSoft
-$geral.MaximumSize = New-Object System.Drawing.Size(850, 0)
+$geral = Criar-Label "Pronto para iniciar." 38 804 10 $false $fgSoft
+$geral.AutoSize = $false
+$geral.Size = New-Object System.Drawing.Size(960, 44)
+$geral.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
 $form.Controls.Add($geral)
 
-$btnFechar = Criar-Botao "Fechar" 906 766 90 34
+$btnFechar = Criar-Botao "Fechar" 982 764 90 34
 $form.Controls.Add($btnFechar)
 
 $btnFechar.Add_Click({
@@ -1056,11 +1132,13 @@ $timer.Add_Tick({
             if ($null -ne $ultimo -and $ultimo.Value.Sucesso) {
                 $progress.Value = 100
                 $lblProgresso.Text = "100%"
-                $geral.Text = "$($ultimo.Key): $($statusApps[$ultimo.Key].Texto)"
+                $textoRodape = $statusApps[$ultimo.Key].Texto -replace "`r`n", " | "
+                $geral.Text = "$($ultimo.Key): $textoRodape"
             }
             elseif ($null -ne $ultimo) {
                 $lblProgresso.Text = "$($ultimo.Value.Progresso)%"
-                $geral.Text = "$($ultimo.Key): $($statusApps[$ultimo.Key].Texto)"
+                $textoRodape = $statusApps[$ultimo.Key].Texto -replace "`r`n", " | "
+                $geral.Text = "$($ultimo.Key): $textoRodape"
             }
         }
     }
@@ -1072,7 +1150,8 @@ $timer.Add_Tick({
         $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
         $progress.Value = [math]::Min([int]$ativos[0].Progresso, 100)
         $lblProgresso.Text = "$($progress.Value)%"
-        $geral.Text = "${nomeAtivo}: $($statusAtivo.Text)"
+        $textoRodape = $statusAtivo.Text -replace "`r`n", " | "
+        $geral.Text = "${nomeAtivo}: $textoRodape"
     }
     else {
         $media = [int](($ativos | Measure-Object -Property Progresso -Average).Average)
@@ -1085,6 +1164,8 @@ $timer.Add_Tick({
     foreach ($categoria in $categoryViews.Keys) {
         AtualizarDetalhesCategoria $categoria
     }
+
+    AtualizarIndicadoresListas
 })
 
 $timer.Start()
