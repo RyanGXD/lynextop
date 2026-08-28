@@ -109,13 +109,13 @@ function Set-LynextStatus {
     }
 }
 
-function Escape-SingleQuote {
+function ConvertTo-LynextEscapedLiteral {
     param([string]$Text)
     if ($null -eq $Text) { return '' }
     return ($Text -replace "'", "''")
 }
 
-function Confirm-Lynext {
+function Confirm-LynextAction {
     param([string]$Message)
     $result = [Windows.Forms.MessageBox]::Show(
         $Message,
@@ -126,7 +126,7 @@ function Confirm-Lynext {
     return ($result -eq [Windows.Forms.DialogResult]::Yes)
 }
 
-function Require-LynextAdmin {
+function Test-LynextAdminRequired {
     if ($script:IsAdmin) { return $true }
 
     [Windows.Forms.MessageBox]::Show(
@@ -190,9 +190,10 @@ function Show-LynextInput {
     $dialog.Controls.AddRange(@($lbl, $tb, $ok, $cancel))
     $dialog.AcceptButton = $ok
     $dialog.CancelButton = $cancel
+    $dialog.Add_Shown({ $tb.Focus() | Out-Null; $tb.SelectAll() })
 
     if ($dialog.ShowDialog($script:Form) -eq [Windows.Forms.DialogResult]::OK) {
-        return $tb.Text
+        return $tb.Text.Trim()
     }
     return $null
 }
@@ -295,7 +296,7 @@ function Remove-DuplicatePlans {
     }
 }
 
-function Ensure-CustomPlan {
+function Initialize-LynextCustomPlan {
     param([string]$Name, [string]$PreferredBase, [string]$FallbackBase)
 
     $existing = Get-SchemeByName -Name $Name | Select-Object -First 1
@@ -438,7 +439,7 @@ function Set-LynextPowerProfile {
 
     switch ($Profile) {
         'Ultra' {
-            $guid = Ensure-CustomPlan -Name $PlanNames.Ultra -PreferredBase $GuidUltimate -FallbackBase $GuidHigh
+            $guid = Initialize-LynextCustomPlan -Name $PlanNames.Ultra -PreferredBase $GuidUltimate -FallbackBase $GuidHigh
             Set-PowerValueSafe $guid 'sub_processor' 'PROCTHROTTLEMIN' 100 100
             Set-PowerValueSafe $guid 'sub_processor' 'PROCTHROTTLEMAX' 100 100
             Set-PowerValueSafe $guid 'sub_processor' 'PERFEPP' 0 0
@@ -451,7 +452,7 @@ function Set-LynextPowerProfile {
             Set-PowerAliasSafe $guid 'SUB_PCIEXPRESS' 'ASPM' 0
         }
         'Lite' {
-            $guid = Ensure-CustomPlan -Name $PlanNames.Lite -PreferredBase $GuidBalanced -FallbackBase $GuidBalanced
+            $guid = Initialize-LynextCustomPlan -Name $PlanNames.Lite -PreferredBase $GuidBalanced -FallbackBase $GuidBalanced
             Set-PowerValueSafe $guid 'sub_processor' 'PROCTHROTTLEMIN' 5 5
             Set-PowerValueSafe $guid 'sub_processor' 'PROCTHROTTLEMAX' 100 100
             Set-PowerValueSafe $guid 'sub_processor' 'PERFEPP' 25 45
@@ -459,7 +460,7 @@ function Set-LynextPowerProfile {
             Set-PowerValueSafe $guid 'sub_processor' 'CPMINCORES' 50 25
         }
         'Thermal' {
-            $guid = Ensure-CustomPlan -Name $PlanNames.Thermal -PreferredBase $GuidBalanced -FallbackBase $GuidBalanced
+            $guid = Initialize-LynextCustomPlan -Name $PlanNames.Thermal -PreferredBase $GuidBalanced -FallbackBase $GuidBalanced
             Set-PowerValueSafe $guid 'sub_processor' 'PROCTHROTTLEMIN' 5 5
             Set-PowerValueSafe $guid 'sub_processor' 'PROCTHROTTLEMAX' 99 99
             Set-PowerValueSafe $guid 'sub_processor' 'PERFEPP' 60 80
@@ -558,11 +559,12 @@ function Format-LynextState {
     )
     try {
         $desc = & $Describe $Value
-        "{0}: {1} (valor: {2})" -f $Name, $desc, ($(if ($null -eq $Value) { 'ausente' } else { $Value }))
     }
     catch {
-        "{0}: nao identificado (valor: {1})" -f $Name, ($(if ($null -eq $Value) { 'ausente' } else { $Value }))
+        $desc = 'nao identificado'
     }
+    $shown = if ($null -eq $Value) { 'ausente' } else { $Value }
+    "{0}: {1} (valor: {2})" -f $Name, $desc, $shown
 }
 
 function Get-LynextManualState {
@@ -608,7 +610,7 @@ function Get-LynextManualState {
 
     Format-LynextState 'Network Throttling' (Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'NetworkThrottlingIndex') {
         param($v)
-        if ([UInt32]$v -eq [UInt32]4294967295) { 'ULTRA / DESATIVADO' } elseif ($v -eq 10) { 'PADRAO WINDOWS' } else { 'PERSONALIZADO' }
+        if ($null -eq $v) { 'PADRAO / AUSENTE' } elseif ([UInt32]$v -eq [UInt32]4294967295) { 'ULTRA / DESATIVADO' } elseif ($v -eq 10) { 'PADRAO WINDOWS' } else { 'PERSONALIZADO' }
     }
 
     Format-LynextState 'System Responsiveness' (Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' 'SystemResponsiveness') {
@@ -825,7 +827,7 @@ function Start-LynextTask {
         return
     }
 
-    if ($Confirm -and -not (Confirm-Lynext $ConfirmMessage)) { return }
+    if ($Confirm -and -not (Confirm-LynextAction $ConfirmMessage)) { return }
 
     $outFile = Join-Path $script:LogDir ("task_out_{0}.txt" -f [guid]::NewGuid().ToString('N'))
     $errFile = Join-Path $script:LogDir ("task_err_{0}.txt" -f [guid]::NewGuid().ToString('N'))
@@ -868,7 +870,7 @@ function Read-TaskDelta {
     return @{ Text = ''; Length = $text.Length }
 }
 
-function Poll-LynextTask {
+function Update-LynextTaskPoll {
     if (-not $script:Task) { return }
     $task = $script:Task
     try { $task.Process.Refresh() } catch {}
@@ -919,7 +921,7 @@ function Poll-LynextTask {
 # =========================================================
 # UI helpers
 # =========================================================
-function New-Label {
+function New-LynextLabel {
     param([string]$Text, [Drawing.Font]$Font, [Drawing.Color]$Color)
     $lbl = New-Object Windows.Forms.Label
     $lbl.Text = $Text
@@ -929,7 +931,7 @@ function New-Label {
     return $lbl
 }
 
-function New-ActionButton {
+function New-LynextActionButton {
     param(
         [string]$Text,
         [string]$Hint,
@@ -964,7 +966,7 @@ function New-ActionButton {
     return $btn
 }
 
-function New-Tab {
+function New-LynextTab {
     param([string]$Title, [string]$Header, [string]$Description)
     $tab = New-Object Windows.Forms.TabPage
     $tab.Text = $Title
@@ -981,8 +983,8 @@ function New-Tab {
     $layout.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 48))) | Out-Null
     $layout.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Percent, 100))) | Out-Null
 
-    $title = New-Label $Header $font.H2 $ui.Text
-    $desc = New-Label $Description $font.Text $ui.Muted
+    $title = New-LynextLabel $Header $font.H2 $ui.Text
+    $desc = New-LynextLabel $Description $font.Text $ui.Muted
     $desc.MaximumSize = New-Object Drawing.Size(540, 44)
 
     $flow = New-Object Windows.Forms.FlowLayoutPanel
@@ -997,6 +999,64 @@ function New-Tab {
     $tab.Controls.Add($layout)
 
     return [pscustomobject]@{ Page = $tab; Flow = $flow }
+}
+
+function Add-LynextManualTweakButtons {
+    <#
+        Data-driven replacement for the long block of near-identical
+        New-LynextActionButton calls that used to live in the Manual tab.
+        Each row describes one tweak; the loop below wires it up.
+    #>
+    param([Windows.Forms.FlowLayoutPanel]$Flow)
+
+    $tweaks = @(
+        @{ Text = 'Game Mode: Ativar';               Tweak = 'GameModeOn';                 Hint = 'Ativa AutoGameModeEnabled e AllowAutoGameMode.' }
+        @{ Text = 'Game Mode: Desativar';             Tweak = 'GameModeOff';                Hint = 'Desativa AutoGameModeEnabled e AllowAutoGameMode.' }
+        @{ Text = 'Game DVR: Desativar';              Tweak = 'GameDvrOff';                 Hint = 'Desativa captura/gravacao em segundo plano para reduzir overhead.' }
+        @{ Text = 'Game DVR: Ativar';                 Tweak = 'GameDvrOn';                  Hint = 'Reativa captura/gravacao em segundo plano do Windows/Xbox.' }
+        @{ Text = 'HAGS: Ativar';                     Tweak = 'HagsOn';                     Hint = 'Ativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' }
+        @{ Text = 'HAGS: Desativar';                  Tweak = 'HagsOff';                    Hint = 'Desativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' }
+        @{ Text = 'Power Throttling: Performance';    Tweak = 'PowerThrottlingPerformance'; Hint = 'Desativa Power Throttling via registro para priorizar desempenho.' }
+        @{ Text = 'Power Throttling: Padrao';         Tweak = 'PowerThrottlingDefault';     Hint = 'Remove o valor Lynext e deixa o Windows controlar Power Throttling.' }
+        @{ Text = 'Network Throttling: Ultra';        Tweak = 'NetworkUltra';               Hint = 'Define NetworkThrottlingIndex como 0xffffffff.' }
+        @{ Text = 'Network Throttling: Padrao';       Tweak = 'NetworkDefault';             Hint = 'Define NetworkThrottlingIndex como 10.' }
+        @{ Text = 'Responsiveness: Ultra';            Tweak = 'ResponsivenessUltra';        Hint = 'Define SystemResponsiveness como 10.' }
+        @{ Text = 'Responsiveness: Padrao';           Tweak = 'ResponsivenessDefault';      Hint = 'Define SystemResponsiveness como 20.' }
+        @{ Text = 'Prioridade Games: Ultra';          Tweak = 'GamesPriorityUltra';         Hint = 'Define GPU Priority 8 e Priority 6 para a tarefa Games.' }
+        @{ Text = 'Prioridade Games: Padrao';         Tweak = 'GamesPriorityDefault';       Hint = 'Remove os valores Lynext para voltar ao padrao do Windows.' }
+    )
+
+    foreach ($item in $tweaks) {
+        $tweakName = $item.Tweak
+        $onClick = {
+            if (-not (Test-LynextAdminRequired)) { return }
+            Start-LynextTask $item.Text "Set-LynextManualTweak -Tweak $tweakName"
+        }.GetNewClosure()
+        $Flow.Controls.Add((New-LynextActionButton $item.Text $item.Hint $onClick)) | Out-Null
+    }
+}
+
+function Add-LynextPowerTuningButtons {
+    <#
+        Data-driven replacement for the three near-identical
+        "Energia Ultra/Lite/Termica" buttons in the Tuning tab.
+    #>
+    param([Windows.Forms.FlowLayoutPanel]$Flow)
+
+    $profiles = @(
+        @{ Text = 'Energia Ultra';  Profile = 'Ultra';   Hint = 'Somente energia: CPU sempre em alta performance e suspensoes economicas reduzidas.' }
+        @{ Text = 'Energia Lite';   Profile = 'Lite';    Hint = 'Somente energia: mantem resposta boa sem travar tudo no maximo o tempo todo.' }
+        @{ Text = 'Energia Termica';Profile = 'Thermal'; Hint = 'Somente energia: reduz boost e ajuda a controlar temperatura, ruido e bateria.' }
+    )
+
+    foreach ($item in $profiles) {
+        $profileName = $item.Profile
+        $onClick = {
+            if (-not (Test-LynextAdminRequired)) { return }
+            Start-LynextTask $item.Text "Set-LynextPowerProfile -Profile $profileName"
+        }.GetNewClosure()
+        $Flow.Controls.Add((New-LynextActionButton $item.Text $item.Hint $onClick)) | Out-Null
+    }
 }
 
 # =========================================================
@@ -1028,9 +1088,9 @@ $header.BackColor = $ui.Bg
 $header.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Percent, 100))) | Out-Null
 $header.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 170))) | Out-Null
 
-$title = New-Label 'Lynext' $font.Title $ui.Accent
-$subtitle = New-Label 'Performance Center compacto para energia, Windows e GPU' $font.Text $ui.Muted
-$credit = New-Label 'Created by Ryan' $font.Text $ui.Muted
+$title = New-LynextLabel 'Lynext' $font.Title $ui.Accent
+$subtitle = New-LynextLabel 'Performance Center compacto para energia, Windows e GPU' $font.Text $ui.Muted
+$credit = New-LynextLabel 'Created by Ryan' $font.Text $ui.Muted
 $credit.TextAlign = 'MiddleRight'
 $credit.Dock = 'Fill'
 
@@ -1047,7 +1107,7 @@ $split.BackColor = $ui.Bg
 $split.Panel1.BackColor = $ui.Panel
 $split.Panel2.BackColor = $ui.Panel
 
-function Resize-LynextSplit {
+function Update-LynextSplitLayout {
     if (-not $split -or $split.Width -le 900) { return }
     $target = [Math]::Max(520, $split.Width - 340)
     $max = $split.Width - 260
@@ -1064,11 +1124,11 @@ $tabs = New-Object Windows.Forms.TabControl
 $tabs.Dock = 'Fill'
 $tabs.Font = $font.Text
 
-$tabPresets = New-Tab 'Presets' 'Presets principais' 'Use estes botoes para aplicar um pacote pronto. Ultra prioriza FPS e resposta; Lite equilibra desempenho e consumo; Termico reduz calor e ruido.'
-$tabTuning = New-Tab 'Energia + Windows' 'Ajustes separados' 'Aqui voce mexe em uma parte por vez: plano de energia da CPU ou ajustes de jogos do Windows.'
-$tabGpu = New-Tab 'GPU' 'GPU e politicas' 'NVIDIA usa nvidia-smi quando disponivel. AMD e Intel ficam com diagnostico e recomendacoes para evitar tuning arriscado.'
-$tabManual = New-Tab 'Manual' 'Ajustes manuais' 'Leia o estado atual do PC e ative/desative cada tweak separadamente. Ideal para manutencao fina em PC de cliente.'
-$tabBackup = New-Tab 'Backup' 'Backup, reset e logs' 'Salve o estado atual antes dos presets. O reset volta energia, Windows e NVIDIA para o que foi salvo.'
+$tabPresets = New-LynextTab 'Presets' 'Presets principais' 'Use estes botoes para aplicar um pacote pronto. Ultra prioriza FPS e resposta; Lite equilibra desempenho e consumo; Termico reduz calor e ruido.'
+$tabTuning = New-LynextTab 'Energia + Windows' 'Ajustes separados' 'Aqui voce mexe em uma parte por vez: plano de energia da CPU ou ajustes de jogos do Windows.'
+$tabGpu = New-LynextTab 'GPU' 'GPU e politicas' 'NVIDIA usa nvidia-smi quando disponivel. AMD e Intel ficam com diagnostico e recomendacoes para evitar tuning arriscado.'
+$tabManual = New-LynextTab 'Manual' 'Ajustes manuais' 'Leia o estado atual do PC e ative/desative cada tweak separadamente. Ideal para manutencao fina em PC de cliente.'
+$tabBackup = New-LynextTab 'Backup' 'Backup, reset e logs' 'Salve o estado atual antes dos presets. O reset volta energia, Windows e NVIDIA para o que foi salvo.'
 $tabs.TabPages.AddRange(@($tabPresets.Page, $tabTuning.Page, $tabGpu.Page, $tabManual.Page, $tabBackup.Page))
 $split.Panel1.Controls.Add($tabs)
 
@@ -1081,7 +1141,7 @@ $outPanel.ColumnCount = 1
 $outPanel.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 28))) | Out-Null
 $outPanel.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Percent, 100))) | Out-Null
 
-$outTitle = New-Label 'Saida' $font.H2 $ui.Text
+$outTitle = New-LynextLabel 'Saida' $font.H2 $ui.Text
 $script:txtOutput = New-Object Windows.Forms.TextBox
 $script:txtOutput.Dock = 'Fill'
 $script:txtOutput.Multiline = $true
@@ -1107,15 +1167,15 @@ $footer.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.Si
 $footer.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 24))) | Out-Null
 $footer.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 28))) | Out-Null
 
-$script:lblStatus = New-Label 'Status: Pronto' $font.Btn $ui.Accent
+$script:lblStatus = New-LynextLabel 'Status: Pronto' $font.Btn $ui.Accent
 $script:lblStatus.Dock = 'Fill'
-$script:lblMode = New-Label 'Modo ativo: verificando...' $font.Btn $ui.Warn
+$script:lblMode = New-LynextLabel 'Modo ativo: verificando...' $font.Btn $ui.Warn
 $script:lblMode.Dock = 'Fill'
 $script:Progress = New-Object Windows.Forms.ProgressBar
 $script:Progress.Dock = 'Fill'
 $script:Progress.Margin = New-Object Windows.Forms.Padding(8, 5, 12, 5)
 $script:Progress.Style = 'Blocks'
-$logLabel = New-Label ("Log: " + (Split-Path -Leaf $script:LogFile)) $font.Text $ui.Muted
+$logLabel = New-LynextLabel ("Log: " + (Split-Path -Leaf $script:LogFile)) $font.Text $ui.Muted
 $logLabel.Dock = 'Fill'
 $logLabel.AutoSize = $false
 $logLabel.TextAlign = 'MiddleLeft'
@@ -1131,19 +1191,19 @@ $root.Controls.Add($split, 0, 1)
 $root.Controls.Add($footer, 0, 2)
 $script:Form.Controls.Add($root)
 $script:Form.Add_Shown({
-    try { Resize-LynextSplit } catch {}
+    try { Update-LynextSplitLayout } catch {}
 })
 $script:Form.Add_Resize({
-    try { Resize-LynextSplit } catch {}
+    try { Update-LynextSplitLayout } catch {}
 })
 
 # =========================================================
 # Actions
 # =========================================================
-$backupPath = Escape-SingleQuote $script:BackupFile
+$backupPath = ConvertTo-LynextEscapedLiteral $script:BackupFile
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Ultra completo' 'Maximo desempenho: cria/ativa plano Ultra, desliga DVR, liga Game Mode/HAGS e tenta elevar limite NVIDIA.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabPresets.Flow.Controls.Add((New-LynextActionButton 'Ultra completo' 'Maximo desempenho: cria/ativa plano Ultra, desliga DVR, liga Game Mode/HAGS e tenta elevar limite NVIDIA.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     Start-LynextTask 'Ultra completo' @"
 if (-not (Test-Path '$backupPath')) { Save-LynextBackup -BackupFile '$backupPath' }
 Set-LynextPowerProfile -Profile Ultra
@@ -1153,8 +1213,8 @@ if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Ultra -BackupFile
 "@ -Confirm -ConfirmMessage 'O modo Ultra e mais agressivo e pode aumentar consumo/temperatura. Deseja continuar?'
 }))
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Lite equilibrado' 'Perfil diario: bom desempenho com consumo menor, Windows otimizado e NVIDIA voltando ao limite salvo.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabPresets.Flow.Controls.Add((New-LynextActionButton 'Lite equilibrado' 'Perfil diario: bom desempenho com consumo menor, Windows otimizado e NVIDIA voltando ao limite salvo.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     Start-LynextTask 'Lite equilibrado' @"
 if (-not (Test-Path '$backupPath')) { Save-LynextBackup -BackupFile '$backupPath' }
 Set-LynextPowerProfile -Profile Lite
@@ -1164,42 +1224,29 @@ if ((Get-GpuVendor) -eq 'NVIDIA') { Set-NvidiaProfile -Profile Lite -BackupFile 
 "@
 }))
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Termico / quieto' 'Para notebook quente ou barulhento: reduz boost agressivo e prioriza temperatura/estabilidade.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabPresets.Flow.Controls.Add((New-LynextActionButton 'Termico / quieto' 'Para notebook quente ou barulhento: reduz boost agressivo e prioriza temperatura/estabilidade.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     Start-LynextTask 'Termico / quieto' "Set-LynextPowerProfile -Profile Thermal"
 }))
 
-$tabPresets.Flow.Controls.Add((New-ActionButton 'Resumo do sistema' 'Mostra Windows, CPU, GPUs, plano ativo e qual preset Lynext esta em uso.' {
+$tabPresets.Flow.Controls.Add((New-LynextActionButton 'Resumo do sistema' 'Mostra Windows, CPU, GPUs, plano ativo e qual preset Lynext esta em uso.' {
     Start-LynextTask 'Resumo do sistema' 'Show-LynextSummary'
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Ultra' 'Somente energia: CPU sempre em alta performance e suspensoes economicas reduzidas.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Energia Ultra' "Set-LynextPowerProfile -Profile Ultra"
-}))
+Add-LynextPowerTuningButtons -Flow $tabTuning.Flow
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Lite' 'Somente energia: mantem resposta boa sem travar tudo no maximo o tempo todo.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Energia Lite' "Set-LynextPowerProfile -Profile Lite"
-}))
-
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Energia Termica' 'Somente energia: reduz boost e ajuda a controlar temperatura, ruido e bateria.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Energia Termica' "Set-LynextPowerProfile -Profile Thermal"
-}))
-
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Ultra' 'Somente Windows: Game Mode/HAGS ligados, DVR desligado e prioridades de jogos mais agressivas.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabTuning.Flow.Controls.Add((New-LynextActionButton 'Windows Ultra' 'Somente Windows: Game Mode/HAGS ligados, DVR desligado e prioridades de jogos mais agressivas.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     Start-LynextTask 'Windows Ultra' "Set-LynextWindowsProfile -Profile Ultra"
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Windows Lite' 'Somente Windows: remove gravacao em segundo plano e usa prioridades mais moderadas.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabTuning.Flow.Controls.Add((New-LynextActionButton 'Windows Lite' 'Somente Windows: remove gravacao em segundo plano e usa prioridades mais moderadas.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     Start-LynextTask 'Windows Lite' "Set-LynextWindowsProfile -Profile Lite"
 }))
 
-$tabTuning.Flow.Controls.Add((New-ActionButton 'Reset Windows' 'Volta apenas os ajustes de registro do Windows usando o backup salvo.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabTuning.Flow.Controls.Add((New-LynextActionButton 'Reset Windows' 'Volta apenas os ajustes de registro do Windows usando o backup salvo.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -1211,7 +1258,7 @@ Restore-RegistryFromBackup -Backup `$backup
 "@
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA estado' 'Mostra limites de energia e clocks reportados pelo nvidia-smi.' {
+$tabGpu.Flow.Controls.Add((New-LynextActionButton 'NVIDIA estado' 'Mostra limites de energia e clocks reportados pelo nvidia-smi.' {
     Start-LynextTask 'NVIDIA estado' @"
 `$smi = Get-NvidiaSmiPath
 if (-not `$smi) { 'NVIDIA: nvidia-smi nao encontrado; informacoes indisponiveis.'; return }
@@ -1219,13 +1266,13 @@ if (-not `$smi) { 'NVIDIA: nvidia-smi nao encontrado; informacoes indisponiveis.
 "@
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Ultra' 'Tenta aplicar o maior power limit permitido pela GPU/driver.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabGpu.Flow.Controls.Add((New-LynextActionButton 'NVIDIA Ultra' 'Tenta aplicar o maior power limit permitido pela GPU/driver.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     Start-LynextTask 'NVIDIA Ultra' "Set-NvidiaProfile -Profile Ultra -BackupFile '$backupPath'"
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e volta ao power limit padrao guardado no backup.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabGpu.Flow.Controls.Add((New-LynextActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e volta ao power limit padrao guardado no backup.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -1233,15 +1280,15 @@ $tabGpu.Flow.Controls.Add((New-ActionButton 'NVIDIA Reset/Lite' 'Reseta clocks e
     Start-LynextTask 'NVIDIA Reset/Lite' "Set-NvidiaProfile -Profile Reset -BackupFile '$backupPath'"
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'Power limit manual' 'Digite um limite em Watts. Use apenas valores suportados pela sua GPU.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabGpu.Flow.Controls.Add((New-LynextActionButton 'Power limit manual' 'Digite um limite em Watts. Use apenas valores suportados pela sua GPU.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     $watts = Show-LynextInput -Title 'Power limit NVIDIA' -Label 'Valor em Watts:' -DefaultValue '200'
     if ([string]::IsNullOrWhiteSpace($watts)) { return }
     if ($watts -notmatch '^\d+(\.\d+)?$') {
         [Windows.Forms.MessageBox]::Show('Valor invalido.', 'Lynext', 'OK', 'Error') | Out-Null
         return
     }
-    $safeWatts = Escape-SingleQuote $watts
+    $safeWatts = ConvertTo-LynextEscapedLiteral $watts
     Start-LynextTask 'Power limit manual' @"
 `$smi = Get-NvidiaSmiPath
 if (-not `$smi) { throw 'NVIDIA: nvidia-smi nao encontrado. Nao foi possivel ajustar power limit.' }
@@ -1250,7 +1297,7 @@ if (-not `$smi) { throw 'NVIDIA: nvidia-smi nao encontrado. Nao foi possivel aju
 "@
 }))
 
-$tabGpu.Flow.Controls.Add((New-ActionButton 'AMD / Intel guia' 'Mostra GPU detectada e politicas seguras para AMD/Intel.' {
+$tabGpu.Flow.Controls.Add((New-LynextActionButton 'AMD / Intel guia' 'Mostra GPU detectada e politicas seguras para AMD/Intel.' {
     Add-Output @"
 AMD:
 - Anti-Lag ON
@@ -1268,91 +1315,22 @@ O tuning automatico pesado fica limitado a NVIDIA por depender do nvidia-smi.
     Set-LynextStatus 'Guia AMD / Intel exibido.' 'ok'
 }))
 
-
 # -------------------------
 # Manual
 # -------------------------
-$tabManual.Flow.Controls.Add((New-ActionButton 'Verificar ajustes manuais' 'Le o PC e mostra se cada ajuste esta ativo, desativado, padrao ou personalizado.' {
+$tabManual.Flow.Controls.Add((New-LynextActionButton 'Verificar ajustes manuais' 'Le o PC e mostra se cada ajuste esta ativo, desativado, padrao ou personalizado.' {
     Start-LynextTask 'Verificar ajustes manuais' 'Get-LynextManualState'
 }))
 
-$tabManual.Flow.Controls.Add((New-ActionButton 'Game Mode: Ativar' 'Ativa AutoGameModeEnabled e AllowAutoGameMode.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Game Mode: Ativar' "Set-LynextManualTweak -Tweak GameModeOn"
-}))
+Add-LynextManualTweakButtons -Flow $tabManual.Flow
 
-$tabManual.Flow.Controls.Add((New-ActionButton 'Game Mode: Desativar' 'Desativa AutoGameModeEnabled e AllowAutoGameMode.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Game Mode: Desativar' "Set-LynextManualTweak -Tweak GameModeOff"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Game DVR: Desativar' 'Desativa captura/gravação em segundo plano para reduzir overhead.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Game DVR: Desativar' "Set-LynextManualTweak -Tweak GameDvrOff"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Game DVR: Ativar' 'Reativa captura/gravação em segundo plano do Windows/Xbox.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Game DVR: Ativar' "Set-LynextManualTweak -Tweak GameDvrOn"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'HAGS: Ativar' 'Ativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'HAGS: Ativar' "Set-LynextManualTweak -Tweak HagsOn"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'HAGS: Desativar' 'Desativa o agendamento de GPU acelerado por hardware. Reinicio recomendado.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'HAGS: Desativar' "Set-LynextManualTweak -Tweak HagsOff"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Power Throttling: Performance' 'Desativa Power Throttling via registro para priorizar desempenho.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Power Throttling: Performance' "Set-LynextManualTweak -Tweak PowerThrottlingPerformance"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Power Throttling: Padrao' 'Remove o valor Lynext e deixa o Windows controlar Power Throttling.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Power Throttling: Padrao' "Set-LynextManualTweak -Tweak PowerThrottlingDefault"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Network Throttling: Ultra' 'Define NetworkThrottlingIndex como 0xffffffff.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Network Throttling: Ultra' "Set-LynextManualTweak -Tweak NetworkUltra"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Network Throttling: Padrao' 'Define NetworkThrottlingIndex como 10.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Network Throttling: Padrao' "Set-LynextManualTweak -Tweak NetworkDefault"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Responsiveness: Ultra' 'Define SystemResponsiveness como 10.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Responsiveness: Ultra' "Set-LynextManualTweak -Tweak ResponsivenessUltra"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Responsiveness: Padrao' 'Define SystemResponsiveness como 20.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Responsiveness: Padrao' "Set-LynextManualTweak -Tweak ResponsivenessDefault"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Prioridade Games: Ultra' 'Define GPU Priority 8 e Priority 6 para a tarefa Games.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Prioridade Games: Ultra' "Set-LynextManualTweak -Tweak GamesPriorityUltra"
-}))
-
-$tabManual.Flow.Controls.Add((New-ActionButton 'Prioridade Games: Padrao' 'Remove os valores Lynext para voltar ao padrao do Windows.' {
-    if (-not (Require-LynextAdmin)) { return }
-    Start-LynextTask 'Prioridade Games: Padrao' "Set-LynextManualTweak -Tweak GamesPriorityDefault"
-}))
-
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Criar / atualizar backup' 'Guarda o estado atual para conseguir voltar depois com Reset geral.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabBackup.Flow.Controls.Add((New-LynextActionButton 'Criar / atualizar backup' 'Guarda o estado atual para conseguir voltar depois com Reset geral.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     Start-LynextTask 'Criar / atualizar backup' "Save-LynextBackup -BackupFile '$backupPath'"
 }))
 
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Reset geral' 'Volta plano de energia, registros do Windows e ajustes NVIDIA para o backup.' {
-    if (-not (Require-LynextAdmin)) { return }
+$tabBackup.Flow.Controls.Add((New-LynextActionButton 'Reset geral' 'Volta plano de energia, registros do Windows e ajustes NVIDIA para o backup.' {
+    if (-not (Test-LynextAdminRequired)) { return }
     if (-not (Test-Path $script:BackupFile)) {
         [Windows.Forms.MessageBox]::Show('Backup nao encontrado.', 'Lynext', 'OK', 'Warning') | Out-Null
         return
@@ -1360,17 +1338,17 @@ $tabBackup.Flow.Controls.Add((New-ActionButton 'Reset geral' 'Volta plano de ene
     Start-LynextTask 'Reset geral' "Restore-LynextBackup -BackupFile '$backupPath'" -Confirm -ConfirmMessage 'Deseja restaurar os ajustes pelo backup salvo?'
 }))
 
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Abrir pasta Lynext' 'Abre a pasta local do Lynext no seu usuario.' {
+$tabBackup.Flow.Controls.Add((New-LynextActionButton 'Abrir pasta Lynext' 'Abre a pasta local do Lynext no seu usuario.' {
     Start-Process explorer.exe $script:LynextRoot
     Set-LynextStatus 'Pasta Lynext aberta.' 'ok'
 }))
 
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Abrir logs' 'Abre a pasta de logs.' {
+$tabBackup.Flow.Controls.Add((New-LynextActionButton 'Abrir logs' 'Abre a pasta de logs.' {
     Start-Process explorer.exe $script:LogDir
     Set-LynextStatus 'Pasta de logs aberta.' 'ok'
 }))
 
-$tabBackup.Flow.Controls.Add((New-ActionButton 'Mostrar caminhos' 'Mostra caminhos de backup e log atual.' {
+$tabBackup.Flow.Controls.Add((New-LynextActionButton 'Mostrar caminhos' 'Mostra caminhos de backup e log atual.' {
     Add-Output @"
 Backup: $script:BackupFile
 Log: $script:LogFile
@@ -1385,7 +1363,7 @@ Pasta: $script:LynextRoot
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 350
 $timer.Add_Tick({
-    Poll-LynextTask
+    Update-LynextTaskPoll
     if (-not $script:IsBusy -and ((Get-Date) - $script:LastModeCheck).TotalSeconds -ge 5) {
         $script:LastModeCheck = Get-Date
         Update-ActiveModeLabel
