@@ -11,6 +11,7 @@ $logAuditoria = Join-Path $destinoBase "downloads-auditoria.log"
 $downloadsAtivos = @{}
 $statusApps = @{}
 $categoryViews = @{}
+$script:tabCategoryMap = @{}
 
 # =========================
 # CORES
@@ -222,6 +223,43 @@ function Garantir-Pasta {
     }
 }
 
+function Set-DoubleBuffered {
+    <#
+        WinForms nao expoe a propriedade DoubleBuffered publicamente fora de uma
+        classe derivada, entao usamos reflection para liga-la. Isso elimina a
+        maior parte do "piscar" em controles que sao redesenhados com frequencia
+        (ListBox com OwnerDraw, paineis atualizados pelo timer, etc).
+    #>
+    param([System.Windows.Forms.Control]$Control)
+
+    try {
+        $prop = [System.Windows.Forms.Control].GetProperty(
+            'DoubleBuffered',
+            [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+        )
+        $prop.SetValue($Control, $true, $null)
+    }
+    catch {
+        # Se falhar por algum motivo, o app continua funcionando, so sem o ganho de fluidez.
+    }
+}
+
+function Set-TextoSeAlterado {
+    <#
+        Reatribuir .Text com o mesmo valor ainda dispara layout/repaint no WinForms.
+        Isso e uma das causas do piscar quando o timer roda a cada poucos ms.
+        So escrevemos quando o texto realmente muda.
+    #>
+    param(
+        [System.Windows.Forms.Control]$Control,
+        [string]$Texto
+    )
+
+    if ($Control.Text -ne $Texto) {
+        $Control.Text = $Texto
+    }
+}
+
 function Criar-Label {
     param(
         [string]$Texto,
@@ -295,6 +333,7 @@ function Criar-Painel {
     $panel.Size = New-Object System.Drawing.Size($Largura, $Altura)
     $panel.BackColor = $Cor
     $panel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    Set-DoubleBuffered $panel
     return $panel
 }
 
@@ -317,6 +356,7 @@ function Criar-Lista {
     $list.DisplayMember = "Nome"
     $list.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
     $list.ItemHeight = 24
+    Set-DoubleBuffered $list
 
     $list.Add_DrawItem({
         param($sender, $e)
@@ -398,14 +438,18 @@ function Set-Status {
         [string]$Tipo = "normal"
     )
 
-    $Label.Text = $Texto
+    Set-TextoSeAlterado -Control $Label -Texto $Texto
 
-    switch ($Tipo) {
-        "ok"      { $Label.ForeColor = $okColor }
-        "erro"    { $Label.ForeColor = $errColor }
-        "andando" { $Label.ForeColor = $runColor }
-        "manual"  { $Label.ForeColor = $manualColor }
-        default   { $Label.ForeColor = $fgSoft }
+    $corAlvo = switch ($Tipo) {
+        "ok"      { $okColor }
+        "erro"    { $errColor }
+        "andando" { $runColor }
+        "manual"  { $manualColor }
+        default   { $fgSoft }
+    }
+
+    if ($Label.ForeColor -ne $corAlvo) {
+        $Label.ForeColor = $corAlvo
     }
 }
 
@@ -421,7 +465,12 @@ function Get-AppStatusColor {
 }
 
 function AtualizarIndicadoresListas {
-    foreach ($categoria in $categoryViews.Keys) {
+    param([string]$SomenteCategoria = "")
+
+    $categorias = if ($SomenteCategoria) { @($SomenteCategoria) } else { $categoryViews.Keys }
+
+    foreach ($categoria in $categorias) {
+        if (-not $categoryViews.ContainsKey($categoria)) { continue }
         $view = $categoryViews[$categoria]
         $view.ListaAuto.Invalidate()
         $view.ListaManual.Invalidate()
@@ -1301,45 +1350,45 @@ function AtualizarDetalhesCategoria {
     $app = Get-SelectedAppFromCategory $Categoria
 
     if ($null -eq $app) {
-        $view.Titulo.Text = "Selecione um app"
-        $view.Tipo.Text = "Tipo: -"
-        $view.Fonte.Text = "Fonte: -"
-        $view.Arquivo.Text = "Arquivo: -"
-        $view.Descricao.Text = "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
-        $view.Acao.Text = "Selecionar app"
-        $view.Acao.Enabled = $false
+        Set-TextoSeAlterado -Control $view.Titulo -Texto "Selecione um app"
+        Set-TextoSeAlterado -Control $view.Tipo -Texto "Tipo: -"
+        Set-TextoSeAlterado -Control $view.Fonte -Texto "Fonte: -"
+        Set-TextoSeAlterado -Control $view.Arquivo -Texto "Arquivo: -"
+        Set-TextoSeAlterado -Control $view.Descricao -Texto "Clique em um app para ver o que ele faz e baixar ou abrir a pagina oficial."
+        Set-TextoSeAlterado -Control $view.Acao -Texto "Selecionar app"
+        if ($view.Acao.Enabled) { $view.Acao.Enabled = $false }
         Set-Status $view.Status "Aguardando selecao." "normal"
         return
     }
 
     $status = Get-AppStatusInfo $app.Nome
 
-    $view.Titulo.Text = $app.Nome
-    $view.Tipo.Text = "Tipo: $($app.Tipo)"
-    $view.Fonte.Text = "Fonte: $($app.Fonte)"
+    Set-TextoSeAlterado -Control $view.Titulo -Texto $app.Nome
+    Set-TextoSeAlterado -Control $view.Tipo -Texto "Tipo: $($app.Tipo)"
+    Set-TextoSeAlterado -Control $view.Fonte -Texto "Fonte: $($app.Fonte)"
 
     if ([string]::IsNullOrWhiteSpace($app.Arquivo)) {
-        $view.Arquivo.Text = "Arquivo: aberto pelo site"
+        Set-TextoSeAlterado -Control $view.Arquivo -Texto "Arquivo: aberto pelo site"
     }
     else {
-        $view.Arquivo.Text = "Arquivo: $($app.Arquivo)"
+        Set-TextoSeAlterado -Control $view.Arquivo -Texto "Arquivo: $($app.Arquivo)"
     }
 
-    $view.Descricao.Text = $app.Descricao
+    Set-TextoSeAlterado -Control $view.Descricao -Texto $app.Descricao
 
     if ($app.Tipo -eq "Automatico") {
         if ($downloadsAtivos.ContainsKey($app.Nome) -and -not $downloadsAtivos[$app.Nome].Finalizado) {
-            $view.Acao.Text = "Baixando..."
-            $view.Acao.Enabled = $false
+            Set-TextoSeAlterado -Control $view.Acao -Texto "Baixando..."
+            if ($view.Acao.Enabled) { $view.Acao.Enabled = $false }
         }
         else {
-            $view.Acao.Text = "Baixar"
-            $view.Acao.Enabled = $true
+            Set-TextoSeAlterado -Control $view.Acao -Texto "Baixar"
+            if (-not $view.Acao.Enabled) { $view.Acao.Enabled = $true }
         }
     }
     else {
-        $view.Acao.Text = "Abrir pagina"
-        $view.Acao.Enabled = $true
+        Set-TextoSeAlterado -Control $view.Acao -Texto "Abrir pagina"
+        if (-not $view.Acao.Enabled) { $view.Acao.Enabled = $true }
     }
 
     Set-Status $view.Status $status.Text $status.Tipo
@@ -1528,6 +1577,8 @@ function CriarAbaCategoria {
         Acao        = $btnAcao
     }
 
+    $script:tabCategoryMap[$tab] = $Categoria
+
     $listaAuto.Add_SelectedIndexChanged({
         if ($listaAuto.SelectedIndex -ge 0) {
             $listaManual.ClearSelected()
@@ -1578,6 +1629,7 @@ $form.MinimizeBox = $false
 $form.Topmost = $true
 $form.BackColor = $bgMain
 $form.ForeColor = $fgMain
+Set-DoubleBuffered $form
 
 $titulo = Criar-Label "Central de Downloads" 415 20 17 $true $fgMain
 $form.Controls.Add($titulo)
@@ -1590,6 +1642,7 @@ $tabControl.Location = New-Object System.Drawing.Point(24, 92)
 $tabControl.Size = New-Object System.Drawing.Size(990, 650)
 $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $tabControl.BackColor = $tabBackColor
+Set-DoubleBuffered $tabControl
 $form.Controls.Add($tabControl)
 
 CriarAbaCategoria -Categoria "Performance" -TabControl $tabControl
@@ -1600,6 +1653,16 @@ foreach ($tab in $tabControl.TabPages) {
     $tab.BackColor = $bgMain
     $tab.ForeColor = $fgMain
 }
+
+# Ao trocar de aba, atualiza na hora (sem esperar o proximo tick do timer)
+# para o que estava rolando em segundo plano aparecer sem atraso nem piscar.
+$tabControl.Add_SelectedIndexChanged({
+    $categoriaAtual = $script:tabCategoryMap[$tabControl.SelectedTab]
+    if ($categoriaAtual) {
+        AtualizarDetalhesCategoria $categoriaAtual
+        AtualizarIndicadoresListas -SomenteCategoria $categoriaAtual
+    }
+})
 
 # =========================
 # RODAPE
@@ -1662,21 +1725,21 @@ $timer.Add_Tick({
 
     if ($ativos.Count -eq 0) {
         if ($downloadsAtivos.Count -eq 0) {
-            $progress.Value = 0
-            $lblProgresso.Text = "0%"
+            if ($progress.Value -ne 0) { $progress.Value = 0 }
+            Set-TextoSeAlterado -Control $lblProgresso -Texto "0%"
         }
         else {
             $ultimo = $finalizados | Select-Object -Last 1
             if ($null -ne $ultimo -and $ultimo.Value.Sucesso) {
-                $progress.Value = 100
-                $lblProgresso.Text = "100%"
+                if ($progress.Value -ne 100) { $progress.Value = 100 }
+                Set-TextoSeAlterado -Control $lblProgresso -Texto "100%"
                 $textoRodape = $statusApps[$ultimo.Key].Texto -replace "`r`n", " | "
-                $geral.Text = "$($ultimo.Key): $textoRodape"
+                Set-TextoSeAlterado -Control $geral -Texto "$($ultimo.Key): $textoRodape"
             }
             elseif ($null -ne $ultimo) {
-                $lblProgresso.Text = "$($ultimo.Value.Progresso)%"
+                Set-TextoSeAlterado -Control $lblProgresso -Texto "$($ultimo.Value.Progresso)%"
                 $textoRodape = $statusApps[$ultimo.Key].Texto -replace "`r`n", " | "
-                $geral.Text = "$($ultimo.Key): $textoRodape"
+                Set-TextoSeAlterado -Control $geral -Texto "$($ultimo.Key): $textoRodape"
             }
         }
     }
@@ -1685,25 +1748,33 @@ $timer.Add_Tick({
         $nomeAtivo = $ativo.Key
         $statusAtivo = Get-AppStatusInfo $nomeAtivo
 
-        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-        $progress.Value = [math]::Min([int]$ativos[0].Progresso, 100)
-        $lblProgresso.Text = "$($progress.Value)%"
+        if ($progress.Style -ne [System.Windows.Forms.ProgressBarStyle]::Continuous) {
+            $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+        }
+        $novoValor = [math]::Min([int]$ativos[0].Progresso, 100)
+        if ($progress.Value -ne $novoValor) { $progress.Value = $novoValor }
+        Set-TextoSeAlterado -Control $lblProgresso -Texto "$($progress.Value)%"
         $textoRodape = $statusAtivo.Text -replace "`r`n", " | "
-        $geral.Text = "${nomeAtivo}: $textoRodape"
+        Set-TextoSeAlterado -Control $geral -Texto "${nomeAtivo}: $textoRodape"
     }
     else {
         $media = [int](($ativos | Measure-Object -Property Progresso -Average).Average)
-        $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-        $progress.Value = [math]::Min($media, 100)
-        $lblProgresso.Text = "$($progress.Value)%"
-        $geral.Text = "$($ativos.Count) downloads em andamento - media $media%"
+        if ($progress.Style -ne [System.Windows.Forms.ProgressBarStyle]::Continuous) {
+            $progress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+        }
+        $novoValor = [math]::Min($media, 100)
+        if ($progress.Value -ne $novoValor) { $progress.Value = $novoValor }
+        Set-TextoSeAlterado -Control $lblProgresso -Texto "$($progress.Value)%"
+        Set-TextoSeAlterado -Control $geral -Texto "$($ativos.Count) downloads em andamento - media $media%"
     }
 
-    foreach ($categoria in $categoryViews.Keys) {
-        AtualizarDetalhesCategoria $categoria
+    # So atualiza a categoria (e a(s) lista(s)) da aba que esta realmente visivel.
+    # Atualizar as 3 abas a cada 500ms, mesmo escondidas, era a causa principal do piscar.
+    $categoriaVisivel = $script:tabCategoryMap[$tabControl.SelectedTab]
+    if ($categoriaVisivel) {
+        AtualizarDetalhesCategoria $categoriaVisivel
+        AtualizarIndicadoresListas -SomenteCategoria $categoriaVisivel
     }
-
-    AtualizarIndicadoresListas
 })
 
 $timer.Start()
