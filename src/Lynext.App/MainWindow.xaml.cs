@@ -21,7 +21,9 @@ public partial class MainWindow : Window
         {
             _hardware = HardwareInfoService.Read();
             CpuText.Text = $"Processador: {_hardware.Processor}";
-            GpuText.Text = $"Placa(s) de vídeo: {string.Join(" • ", _hardware.GraphicsAdapters)}";
+            GpuText.Text = "Placa(s) de vídeo: " + string.Join(" • ", _hardware.GraphicsAdapters.Select(g =>
+                $"{g.Name} (driver {g.DriverVersion}, data {g.DriverDate})"));
+            RamText.Text = $"Memória RAM instalada: {(_hardware.InstalledMemoryGb > 0 ? $"{_hardware.InstalledMemoryGb:N1} GB" : "não identificada")} • Núcleos físicos: {(_hardware.PhysicalCores > 0 ? _hardware.PhysicalCores : "indisponível")}";
             SystemText.Text = $"Windows: {_hardware.WindowsVersion} • Processadores lógicos: {_hardware.LogicalProcessors}";
             FeedbackText.Text = $"Hardware analisado em {_hardware.ScannedAt:dd/MM/yyyy HH:mm:ss}.";
         }
