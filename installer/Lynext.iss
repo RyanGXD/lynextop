@@ -1,6 +1,8 @@
 ; Lynext installer — requires Inno Setup 6 to build.
 #define AppName "Lynext"
-#define AppVersion "0.1.0"
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
 #define AppPublisher "RyanGXD"
 #define AppExeName "Lynext.exe"
 
