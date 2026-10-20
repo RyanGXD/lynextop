@@ -9,7 +9,7 @@
     <RootNamespace>Lynext</RootNamespace>
     <Version>0.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Branding\Lynext.ico</ApplicationIcon>
+    <ApplicationIcon Condition="Exists('Branding\Lynext.ico')">Branding\Lynext.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
