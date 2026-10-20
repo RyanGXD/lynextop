@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - rebuild/desktop-installer
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -25,14 +27,42 @@ jobs:
         shell: pwsh
         run: choco install innosetup --yes --no-progress
 
+      - name: Resolve build version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $version = $tag.TrimStart('v')
+          } else {
+            $version = "0.1.0"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Restore dependencies
+        shell: pwsh
+        run: dotnet restore .\src\Lynext.App\Lynext.App.csproj
+
+      - name: Build app (diagnostic step)
+        shell: pwsh
+        run: dotnet build .\src\Lynext.App\Lynext.App.csproj -c Release -p:Version="${{ steps.version.outputs.version }}"
+
       - name: Build application and installer
         shell: pwsh
-        run: .\scripts\build-installer.ps1
+        run: .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}"
 
-      - name: Upload installer
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: Lynext-Setup-x64
           path: artifacts/Lynext-Setup-*-x64.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Lynext ${{ github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/Lynext-Setup-*-x64.exe
