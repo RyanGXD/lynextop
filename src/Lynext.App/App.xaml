@@ -1,0 +1,23 @@
+<Application x:Class="Lynext.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <Color x:Key="WindowColor">#101318</Color>
+        <Color x:Key="PanelColor">#191E26</Color>
+        <Color x:Key="AccentColor">#75E39A</Color>
+        <SolidColorBrush x:Key="WindowBrush" Color="{StaticResource WindowColor}"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource PanelColor}"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#F0F3F6"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#A6AFBB"/>
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Background" Value="#252C36"/>
+            <Setter Property="BorderBrush" Value="#394351"/>
+            <Setter Property="Padding" Value="14,9"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Application.Resources>
+</Application>
