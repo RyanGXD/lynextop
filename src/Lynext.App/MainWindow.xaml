@@ -65,7 +65,7 @@
                     <Button Content="Lite" Tag="Lite" Click="Profile_Click"/>
                     <Button Content="Empresarial" Tag="Empresarial" Click="Profile_Click"/>
                     <Button Content="Economia" Tag="Economia" Click="Profile_Click"/>
-                    <TextBlock Text="Os perfis ainda não aplicam alterações. Nesta fase estamos montando a interface e a detecção de hardware." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
+                    <TextBlock Text="Os perfis Gamer, Lite, Empresarial e Economia ainda estão em planejamento. O Gamer Ultra começa com uma etapa segura e reversível." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
                 </StackPanel>
             </Border>
 

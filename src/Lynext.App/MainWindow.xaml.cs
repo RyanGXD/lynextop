@@ -132,7 +132,7 @@ public partial class MainWindow : Window
                 else
                 {
                     var continueWithoutPoint = MessageBox.Show(
-                        $"O Lynext não conseguiu confirmar a criação do ponto de restauração.\n\nMotivo: {attempt.Error}\n\nNenhuma otimização foi aplicada ainda. Esta primeira etapa altera somente duas opções do Modo de Jogo e guarda um backup próprio. Deseja prosseguir sem o ponto de restauração?",
+                        $"O Lynext não conseguiu confirmar a criação do ponto de restauração.\n\nMotivo: {attempt.Error}\n\nNenhuma otimização foi aplicada ainda. Esta primeira etapa altera somente a opção documentada do Modo de Jogo e guarda um backup próprio. Deseja prosseguir sem o ponto de restauração?",
                         "Lynext — Ponto de restauração não confirmado",
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Warning);

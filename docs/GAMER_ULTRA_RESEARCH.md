@@ -18,14 +18,26 @@ A alteração funcional desta versão limita-se ao valor de registro documentado
 
 A referência oficial do Windows 11 identifica `AutoGameModeEnabled` como o valor do Registro que corresponde à alternância Modo de Jogo em Configurações > Jogos > Modo de Jogo (https://learn.microsoft.com/en-us/windows/apps/develop/settings/settings-windows-11). O Lynext não altera o valor adicional `AllowAutoGameMode` porque não é necessário para aplicar essa opção documentada.\n\nA documentação PowerShell da Microsoft indica que `Checkpoint-Computer` é compatível com Windows cliente e não cria mais de um ponto a cada 24 horas. O Lynext precisa confirmar o resultado e mostrar a mensagem de falha sem alegar sucesso.
 
-## Pesquisa e próximos candidatos
+## Pesquisa consolidada: o que pode trazer benefício real
 
-1. **Aplicativos de inicialização:** candidatos de alto valor quando realmente ficam residentes ou executam tarefas em segundo plano. Devem ser exibidos para escolha do usuário, não todos desativados automaticamente. A Microsoft descreve como verificar o impacto de inicialização no Gerenciador de Tarefas.
-2. **Otimizações gráficas do Windows 11:** a opção “Otimizações para jogos em janela” beneficia certos jogos DirectX 10/11 em janela/sem borda e pode reduzir a latência de apresentação. Deve ser explicada e testada por jogo; nesta primeira etapa abrimos as Configurações gráficas para revisão manual.
-3. **NVIDIA Reflex / AMD Radeon Anti-Lag:** usar de forma específica por jogo e apenas quando compatível. Reflex e Anti-Lag não são ajustes universais de registro do Windows.
-4. **HAGS, energia e política de CPU:** não existe uma configuração universal comprovada para todo hardware. Deixar o padrão e coletar dados comparáveis antes de sugerir alteração.
-5. **Serviços:** só considerar serviço opcional após identificar sua função, dependências e uso no PC. Uma lista popular de debloat não substitui teste de estabilidade.
-6. **RAM/SSD:** preservar gerenciamento de memória, paginação, TRIM e otimização programada. Investigar atividade real de fundo ou falta de RAM antes de mexer.
+1. **Aplicativos de inicialização:** primeira candidata para a próxima versão. A Microsoft explica que o Gerenciador de Tarefas classifica impacto com base em CPU e disco durante a inicialização. O Lynext deve mostrar itens e permitir escolha individual, com reversão; não desativar todos automaticamente. Foco em programas de terceiros opcionais, sem alterar serviços.
+2. **Otimizações gráficas do Windows 11:** a opção “Otimizações para jogos em janela” pode reduzir a latência de apresentação em jogos DirectX 10/11 compatíveis que usam janela/sem borda. É uma configuração dependente do jogo; a aplicação abre a página gráfica para revisão manual.
+3. **NVIDIA Reflex / AMD Radeon Anti-Lag:** aplicar somente nas opções específicas do jogo ou painel de driver compatível. Reflex costuma ser preferível à configuração de baixa latência do driver quando o próprio jogo disponibiliza Reflex. Anti-Lag 2 exige integração do jogo. Não são tweaks universais de registro do Windows.
+4. **Configurações de profissionais:** guias atuais de CS2 (947 jogadores profissionais analisados) e VALORANT (701) recomendam principalmente opções específicas de cada jogo e hardware. Isso não valida uma lista universal de serviços do Windows. Não copiar automaticamente a opção de lançamento -high, afinidade de CPU ou launch options: há relatos contraditórios e testes de comunidade que mostram resultado neutro ou pior em algumas máquinas.
+5. **HAGS, VBS/Integridade da Memória, energia e política de CPU:** benchmarks publicados e relatos comunitários divergem por geração de CPU/GPU, jogo e versão do Windows. Não desativar recursos de segurança, nem forçar HAGS ou plano de energia, sem oferecer uma opção informada e demonstrar benefício reproduzível no hardware específico.
+6. **Serviços do Windows:** sem desativação em massa. Não tocar em Xbox/Xbox Live, Gaming Services, Game Pass, Microsoft Store, Minecraft, Xbox Game Bar, Game DVR/capturas, Firewall, Defender, Windows Update, rede, áudio, drivers, impressão, Plug and Play ou RPC.
+7. **RAM/SSD:** preservar arquivo de paginação, compressão de memória, TRIM e otimização programada. Diagnosticar falta de RAM, paginação ou atividade real de disco antes de propor mudança.
+8. **Medição:** usar cenários repetíveis e múltiplas capturas. PresentMon e CapFrameX permitem analisar FPS, frametimes, percentis e tempo de apresentação. FPS médio sozinho não é suficiente; comparar 1% lows, distribuição/percentis de frametime e latência quando houver métrica adequada. Manter estado de HAGS e condições térmicas iguais entre testes; as métricas de atividade de GPU do PresentMon têm limitações específicas com HAGS ativado.
+
+## Fontes comunitárias e de medição
+
+- ProSettings — CS2, compilação de preferências de 947 profissionais: https://prosettings.net/guides/cs2-options/
+- ProSettings — VALORANT, compilação de preferências de 701 profissionais: https://prosettings.net/guides/valorant-options/
+- Reddit — discussão de launch options do CS2, incluindo relatos contraditórios sobre a opção de lançamento -high e outras opções: https://www.reddit.com/r/GlobalOffensive/comments/1gzljbg/which_cs2_launch_options_give_you_a_fps_boost/
+- PresentMon — métricas de CPU/GPU/display frame duration e latência: https://github.com/GameTechDev/PresentMon
+- CapFrameX — análise de frametimes, percentis e stutter, baseada no PresentMon: https://github.com/CXWorld/CapFrameX
+- NVIDIA — guia de latência do sistema: https://www.nvidia.com/pt-br/geforce/guides/system-latency-optimization-guide/
+- AMD — Radeon Anti-Lag, cenários GPU-limited e recursos que dependem do jogo: https://www.amd.com/en/resources/support-articles/faqs/DH3-033.html
 
 ## Fontes
 
