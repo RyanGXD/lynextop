@@ -87,7 +87,7 @@
                     <Border Background="#12161C" BorderBrush="#303A49" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,18,0,0">
                         <StackPanel>
                             <TextBlock Text="ATUALIZAÇÕES" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
-                            <TextBlock Text="Consulte versões estáveis publicadas no GitHub. O Lynext nunca instala uma atualização sem sua confirmação." Margin="0,6,0,10" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="O Lynext verifica versões estáveis ao abrir e avisa quando há atualização. O download e a abertura do instalador exigem sua confirmação." Margin="0,6,0,10" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="CheckUpdatesButton" Content="Verificar atualizações" Click="CheckUpdates_Click"/>
                                 <Button x:Name="OpenReleasesButton" Content="Abrir Releases" Click="OpenReleases_Click"/>
