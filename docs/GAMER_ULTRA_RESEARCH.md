@@ -16,7 +16,9 @@ O perfil Gamer Ultra passa a tentar criar um ponto de restauração do Windows, 
 
 A alteração funcional desta versão limita-se ao valor de registro documentado `AutoGameModeEnabled`, que corresponde à alternância Modo de Jogo em Configurações > Jogos > Modo de Jogo, no perfil atual do usuário do Windows. O Lynext salva os valores originais antes de alterar e inclui o botão **Voltar ao padrão**. A aplicação não mexe em serviços Xbox/Game Pass, Game DVR/capturas, Firewall, Defender, Windows Update, plano de energia, HAGS, RAM, SSD ou serviços do sistema.
 
-A referência oficial do Windows 11 identifica `AutoGameModeEnabled` como o valor do Registro que corresponde à alternância Modo de Jogo em Configurações > Jogos > Modo de Jogo (https://learn.microsoft.com/en-us/windows/apps/develop/settings/settings-windows-11). O Lynext não altera o valor adicional `AllowAutoGameMode` porque não é necessário para aplicar essa opção documentada.\n\nA documentação PowerShell da Microsoft indica que `Checkpoint-Computer` é compatível com Windows cliente e não cria mais de um ponto a cada 24 horas. O Lynext precisa confirmar o resultado e mostrar a mensagem de falha sem alegar sucesso.
+A referência oficial do Windows 11 identifica `AutoGameModeEnabled` como o valor do Registro que corresponde à alternância Modo de Jogo em Configurações > Jogos > Modo de Jogo (https://learn.microsoft.com/en-us/windows/apps/develop/settings/settings-windows-11). O Lynext não altera o valor adicional `AllowAutoGameMode` porque não é necessário para aplicar essa opção documentada.
+
+A documentação PowerShell da Microsoft indica que `Checkpoint-Computer` é compatível com Windows cliente e não cria mais de um ponto a cada 24 horas. O Lynext precisa confirmar o resultado e mostrar a mensagem de falha sem alegar sucesso.
 
 ## Pesquisa consolidada: o que pode trazer benefício real
 
