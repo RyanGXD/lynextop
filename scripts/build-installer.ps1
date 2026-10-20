@@ -2,7 +2,8 @@
 param(
     [ValidateSet("win-x64")]
     [string]$Runtime = "win-x64",
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    [string]$Version = "0.1.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,7 +40,14 @@ $format = New-Object System.Drawing.StringFormat
 $format.Alignment = [System.Drawing.StringAlignment]::Center
 $format.LineAlignment = [System.Drawing.StringAlignment]::Center
 $graphics.DrawString("L", $font, [System.Drawing.Brushes]::White, $rect, $format)
-$bitmap.Save($iconPath, [System.Drawing.Imaging.ImageFormat]::Icon)
+$hIcon = $bitmap.GetHicon()
+try {
+    $nativeIcon = [System.Drawing.Icon]::FromHandle($hIcon)
+    $iconStream = [System.IO.File]::Create($iconPath)
+    try { $nativeIcon.Save($iconStream) } finally { $iconStream.Dispose(); $nativeIcon.Dispose() }
+} finally {
+    [void][System.Runtime.InteropServices.Marshal]::DestroyIcon($hIcon)
+}
 $graphics.Dispose()
 $bitmap.Dispose()
 $brush.Dispose()
@@ -48,7 +56,7 @@ $font.Dispose()
 $format.Dispose()
 
 Write-Host "Publicando Lynext para $Runtime..." -ForegroundColor Cyan
-dotnet publish $project -c $Configuration -r $Runtime --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $publishDir
+dotnet publish $project -c $Configuration -r $Runtime --self-contained true "-p:Version=$Version" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $publishDir
 
 if ($LASTEXITCODE -ne 0) {
     throw "A publicação do Lynext falhou (código $LASTEXITCODE)."
@@ -71,7 +79,7 @@ if (-not $compiler) {
 
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 Write-Host "Gerando instalador..." -ForegroundColor Cyan
-& $compiler $issFile
+& $compiler "/DAppVersion=$Version" $issFile
 if ($LASTEXITCODE -ne 0) {
     throw "A criação do instalador falhou (código $LASTEXITCODE)."
 }
