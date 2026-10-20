@@ -19,6 +19,7 @@ public partial class MainWindow : Window
         {
             LoadOptionalBrandImage();
             RefreshHardware();
+            UpdateOptimizationUiState();
             // Check quietly at startup; only notify the user when a newer stable release exists.
             await CheckForUpdatesAsync(showWhenUnavailable: false, automatic: true);
         };
@@ -76,21 +77,163 @@ public partial class MainWindow : Window
         ProfileTitle.Text = profile;
         ProfileDescription.Text = profile switch
         {
-            "Gamer Ultra" => "Foco agressivo em desempenho para hardware limitado. Ajustes compatíveis serão avaliados individualmente.",
-            "Gamer" => "Priorizar FPS, frametime estável e baixa latência com base no hardware detectado.",
-            "Lite" => "Reduzir excessos sem comprometer recursos úteis, segurança ou estabilidade do Windows.",
-            "Empresarial" => "Ajustes conservadores, preservando impressoras, rede, políticas e confiabilidade.",
-            "Economia" => "Reduzir consumo, calor e gasto de bateria, respeitando os limites do equipamento.",
+            "Gamer Ultra" => "Foco competitivo: a primeira etapa ativa apenas o Modo de Jogo do Windows, com backup e opção de reversão. Xbox, Minecraft, Game Pass, Firewall e serviços essenciais ficam preservados.",
+            "Gamer" => "Priorizar FPS, frametime estável e baixa latência com base no hardware detectado. Este perfil ainda está em planejamento.",
+            "Lite" => "Reduzir excessos sem comprometer recursos úteis, segurança ou estabilidade do Windows. Este perfil ainda está em planejamento.",
+            "Empresarial" => "Ajustes conservadores, preservando impressoras, rede, políticas e confiabilidade. Este perfil ainda está em planejamento.",
+            "Economia" => "Reduzir consumo, calor e gasto de bateria, respeitando os limites do equipamento. Este perfil ainda está em planejamento.",
             _ => "Selecione um perfil para preparar a análise."
         };
 
-        FeedbackText.Text = $"Perfil selecionado: {profile}. Nenhuma alteração foi aplicada.";
+        ActivateGamerUltraButton.IsEnabled = profile == "Gamer Ultra";
+        RestoreDefaultsButton.IsEnabled = OptimizationService.CanRestoreDefaults;
+        StatusText.Text = OptimizationService.IsGamerUltraApplied
+            ? "Gamer Ultra ativo"
+            : (profile == "Gamer Ultra" ? "Gamer Ultra pronto" : "Nenhuma otimização aplicada");
+        FeedbackText.Text = $"Perfil selecionado: {profile}. {OptimizationService.GetStatusSummary()}";
     }
 
     private void PrepareAnalysis_Click(object sender, RoutedEventArgs e)
     {
         RefreshHardware();
-        FeedbackText.Text = "Análise básica concluída. O catálogo de otimizações será adicionado na próxima etapa; nada foi alterado.";
+        FeedbackText.Text = "Análise básica concluída. " + OptimizationService.GetStatusSummary()
+            + " Nenhuma alteração foi aplicada por esta análise.";
+    }
+
+    private async void ActivateGamerUltra_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProfileTitle.Text != "Gamer Ultra")
+        {
+            MessageBox.Show("Selecione o perfil Gamer Ultra antes de ativá-lo.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        ActivateGamerUltraButton.IsEnabled = false;
+        try
+        {
+            var restoreChoice = MessageBox.Show(
+                "Antes de ativar o Gamer Ultra, recomendamos tentar criar um ponto de restauração do Windows. Esse ponto pode ocupar espaço em disco e não garante a recuperação de todos os arquivos, aplicativos ou configurações. O Lynext também salva os valores exatos que esta etapa modifica para permitir uma reversão própria.\n\nDeseja tentar criar um ponto de restauração?",
+                "Lynext — Proteção antes de otimizar",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Warning);
+
+            if (restoreChoice == MessageBoxResult.Cancel)
+                return;
+
+            var restorePointNote = "Ponto de restauração não solicitado.";
+            if (restoreChoice == MessageBoxResult.Yes)
+            {
+                FeedbackText.Text = "Tentando criar e verificar um ponto de restauração. Nenhuma otimização foi aplicada ainda...";
+                var attempt = await OptimizationService.TryCreateRestorePointAsync();
+                if (attempt.Success)
+                {
+                    restorePointNote = $"Ponto de restauração confirmado: {attempt.Description} (sequência {attempt.SequenceNumber}).";
+                }
+                else
+                {
+                    var continueWithoutPoint = MessageBox.Show(
+                        $"O Lynext não conseguiu confirmar a criação do ponto de restauração.\n\nMotivo: {attempt.Error}\n\nNenhuma otimização foi aplicada ainda. Esta primeira etapa altera somente duas opções do Modo de Jogo e guarda um backup próprio. Deseja prosseguir sem o ponto de restauração?",
+                        "Lynext — Ponto de restauração não confirmado",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning);
+                    if (continueWithoutPoint != MessageBoxResult.Yes)
+                        return;
+                    restorePointNote = "A ativação foi autorizada sem ponto de restauração confirmado.";
+                }
+            }
+            else
+            {
+                var continueWithoutPoint = MessageBox.Show(
+                    "Você escolheu não criar um ponto de restauração. Esta etapa altera somente duas opções do Modo de Jogo e salva um backup próprio para o botão Voltar ao padrão, mas a proteção é menor sem o ponto do Windows. Deseja prosseguir mesmo assim?",
+                    "Lynext — Confirmar sem ponto",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (continueWithoutPoint != MessageBoxResult.Yes)
+                    return;
+                restorePointNote = "A ativação foi autorizada sem tentar criar um ponto de restauração.";
+            }
+
+            var result = OptimizationService.ApplyGamerUltra();
+            UpdateOptimizationUiState();
+            FeedbackText.Text = result + " " + restorePointNote;
+            MessageBox.Show(
+                result + "\n\n" + restorePointNote + "\n\nNenhum serviço do Xbox/Game Pass, Firewall, Defender ou Windows Update foi desativado. Nenhum ganho de FPS é presumido: a etapa precisa ser medida no jogo.",
+                "Lynext — Gamer Ultra",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            FeedbackText.Text = "Não foi possível aplicar o Gamer Ultra: " + ex.Message;
+            MessageBox.Show(
+                $"Não foi possível aplicar o Gamer Ultra. Se um erro aconteceu durante a alteração, o Lynext tentou restaurar os valores anteriores.\n\nDetalhes: {ex.Message}",
+                "Lynext — Falha na ativação",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            UpdateOptimizationUiState();
+        }
+    }
+
+    private void RestoreDefaults_Click(object sender, RoutedEventArgs e)
+    {
+        if (!OptimizationService.CanRestoreDefaults)
+        {
+            MessageBox.Show("Não existe backup do Gamer Ultra para restaurar.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
+            UpdateOptimizationUiState();
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            "O Lynext vai restaurar somente os valores do Modo de Jogo que ele salvou antes da ativação. Xbox, Game Pass, Game DVR, Firewall, Defender, serviços e plano de energia não serão alterados por esta reversão. Deseja continuar?",
+            "Lynext — Voltar ao padrão",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            FeedbackText.Text = OptimizationService.RestoreDefaults();
+            UpdateOptimizationUiState();
+            MessageBox.Show(FeedbackText.Text, "Lynext — Reversão concluída", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            FeedbackText.Text = "Não foi possível restaurar as configurações: " + ex.Message;
+            MessageBox.Show(FeedbackText.Text, "Lynext — Falha na reversão", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            UpdateOptimizationUiState();
+        }
+    }
+
+    private void OpenGraphicsSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("ms-settings:display-graphics") { UseShellExecute = true });
+            FeedbackText.Text = "Configurações de gráficos abertas. No Windows 11, revise as otimizações para jogos em janela e a preferência de GPU por jogo, se aplicável.";
+        }
+        catch (Exception ex)
+        {
+            FeedbackText.Text = "Não foi possível abrir as Configurações gráficas: " + ex.Message;
+        }
+    }
+
+    private void UpdateOptimizationUiState()
+    {
+        RestoreDefaultsButton.IsEnabled = OptimizationService.CanRestoreDefaults;
+        ActivateGamerUltraButton.IsEnabled = ProfileTitle.Text == "Gamer Ultra";
+        if (OptimizationService.IsGamerUltraApplied)
+            StatusText.Text = "Gamer Ultra ativo";
+        else if (ProfileTitle.Text == "Gamer Ultra")
+            StatusText.Text = "Gamer Ultra pronto";
+        else
+            StatusText.Text = "Nenhuma otimização aplicada";
     }
 
     private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
@@ -199,8 +342,8 @@ public partial class MainWindow : Window
     private void History_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(
-            "O registro persistente de alterações será implementado junto com o motor de otimização. Esta versão ainda não aplica ajustes.",
-            "Lynext — Histórico",
+            OptimizationService.GetHistory(),
+            "Lynext — Histórico de alterações",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }

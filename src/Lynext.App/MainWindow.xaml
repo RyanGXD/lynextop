@@ -76,10 +76,15 @@
                     <TextBlock Text="CENTRAL DE AJUSTES" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
                     <Border Background="#12161C" CornerRadius="8" Padding="16" Margin="0,10,0,0">
                         <StackPanel>
-                            <TextBlock Text="Nenhum ajuste disponível nesta versão" FontWeight="SemiBold"/>
-                            <TextBlock Text="Os próximos passos serão criar o catálogo de ajustes com explicação, compatibilidade, risco, estado atual e possibilidade de restauração." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
+                            <TextBlock Text="Primeira etapa — Gamer Ultra seguro" FontWeight="SemiBold"/>
+                            <TextBlock Text="Esta versão ativa apenas as opções específicas do Modo de Jogo do Windows para o usuário atual e salva os valores originais para reversão. Não desativa Xbox, Game Pass, Minecraft, Gaming Services, Game DVR/capturas, Firewall, Defender, Windows Update nem serviços do sistema. HAGS, energia, RAM e SSD ficam intactos até haver testes por hardware." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
                         </StackPanel>
                     </Border>
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button x:Name="ActivateGamerUltraButton" Content="Ativar Gamer Ultra" Click="ActivateGamerUltra_Click" IsEnabled="False" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
+                        <Button x:Name="RestoreDefaultsButton" Content="Voltar ao padrão" Click="RestoreDefaults_Click" IsEnabled="False"/>
+                        <Button Content="Configurações gráficas" Click="OpenGraphicsSettings_Click"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
                         <Button Content="Preparar análise" Click="PrepareAnalysis_Click" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
                         <Button Content="Ver registro de alterações" Click="History_Click"/>
