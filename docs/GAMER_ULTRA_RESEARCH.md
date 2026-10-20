@@ -29,6 +29,17 @@ A referência oficial do Windows 11 identifica `AutoGameModeEnabled` como o valo
 7. **RAM/SSD:** preservar arquivo de paginação, compressão de memória, TRIM e otimização programada. Diagnosticar falta de RAM, paginação ou atividade real de disco antes de propor mudança.
 8. **Medição:** usar cenários repetíveis e múltiplas capturas. PresentMon e CapFrameX permitem analisar FPS, frametimes, percentis e tempo de apresentação. FPS médio sozinho não é suficiente; comparar 1% lows, distribuição/percentis de frametime e latência quando houver métrica adequada. Manter estado de HAGS e condições térmicas iguais entre testes; as métricas de atividade de GPU do PresentMon têm limitações específicas com HAGS ativado.
 
+## Aplicativos de inicialização: primeiro ajuste operacional complementar
+
+A interface abre diretamente a página oficial `ms-settings:startupapps`. A primeira versão deixa a escolha ao usuário, aproveitando o indicador de impacto do Gerenciador de Tarefas em vez de desativar entradas automaticamente. Segundo a documentação da Microsoft, o impacto de inicialização considera CPU e I/O de disco: alto acima de 1 s de CPU ou 3 MB de I/O, médio entre 300 ms e 1 s ou entre 300 KB e 3 MB, e baixo abaixo desses limites.
+
+A ação se limita à revisão de itens de inicialização pela interface nativa do Windows. Ela não termina processos já abertos, não altera serviços e não muda a inicialização de itens automaticamente. Preserve explicitamente Xbox, Xbox Live, Gaming Services, Game Pass, Minecraft, Microsoft Store, Xbox Game Bar, firewall, Defender, drivers, áudio, ferramentas de periféricos e softwares que o jogador precisa (por exemplo, Steam/Discord, quando utilizados). Quando um aplicativo for desnecessário, o usuário pode desativar sua inicialização e reativá-la no mesmo local se necessário.
+
+Fontes adicionais:
+- Microsoft — Startup apps, mecanismos cobertos e impacto medido: https://learn.microsoft.com/en-us/windows/compatibility/startup-apps
+- Microsoft Support — configurações de aplicativos de inicialização: https://support.microsoft.com/pt-br/windows/experience/startup-boot/configure-startup-applications-in-windows
+- Microsoft Support — otimizações de jogos em janela e redução de latência de apresentação: https://support.microsoft.com/pt-br/windows/hardware/display-graphics/optimizations-for-windowed-games-in-windows-11
+
 ## Fontes comunitárias e de medição
 
 - ProSettings — CS2, compilação de preferências de 947 profissionais: https://prosettings.net/guides/cs2-options/

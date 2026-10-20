@@ -224,6 +224,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenStartupAppsSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("ms-settings:startupapps") { UseShellExecute = true });
+            FeedbackText.Text = "Aplicativos de inicialização abertos. Use o impacto mostrado pelo Windows como referência; desative individualmente apenas programas conhecidos que você não precisa ao iniciar. O Lynext não modifica serviços nem encerra processos.";
+        }
+        catch (Exception ex)
+        {
+            FeedbackText.Text = "Não foi possível abrir os Aplicativos de inicialização do Windows: " + ex.Message;
+        }
+    }
+
     private void UpdateOptimizationUiState()
     {
         RestoreDefaultsButton.IsEnabled = OptimizationService.CanRestoreDefaults;

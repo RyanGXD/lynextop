@@ -85,6 +85,10 @@
                         <Button x:Name="RestoreDefaultsButton" Content="Voltar ao padrão" Click="RestoreDefaults_Click" IsEnabled="False"/>
                         <Button Content="Configurações gráficas" Click="OpenGraphicsSettings_Click"/>
                     </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="Aplicativos de inicialização" Click="OpenStartupAppsSettings_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="Revise aplicativos de inicialização no Windows e desative apenas o que você reconhece e não precisa abrir automaticamente. Preserve Xbox, Game Pass, Minecraft, Game Bar, drivers, áudio, periféricos e segurança. Isso altera somente a inicialização; não encerra programas já abertos." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
                     <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
                         <Button Content="Preparar análise" Click="PrepareAnalysis_Click" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
                         <Button Content="Ver registro de alterações" Click="History_Click"/>
