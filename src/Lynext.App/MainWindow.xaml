@@ -13,9 +13,18 @@
         </Grid.RowDefinitions>
 
         <DockPanel Grid.Row="0" Margin="0,0,0,22">
-            <StackPanel DockPanel.Dock="Left">
-                <TextBlock Text="LYNEXT" FontSize="27" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
-                <TextBlock Text="Windows performance control center" Foreground="{StaticResource MutedBrush}" Margin="1,2,0,0"/>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="58" Height="58" CornerRadius="14" Background="#111A33" BorderBrush="#257FEA" BorderThickness="1" Margin="0,0,14,0">
+                    <Grid>
+                        <Ellipse Margin="4" Stroke="#A52DFF" StrokeThickness="2"/>
+                        <TextBlock Text="L" FontSize="34" FontWeight="Black" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="LYNEXT" FontSize="27" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                    <TextBlock Text="OPTIMIZER" FontSize="11" FontWeight="Bold" Foreground="#68A9FF" Margin="1,0,0,0"/>
+                    <TextBlock Text="Windows performance control center" Foreground="{StaticResource MutedBrush}" Margin="1,2,0,0"/>
+                </StackPanel>
             </StackPanel>
             <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
                 <TextBlock Text="BUILD 0.1.0 • PREVIEW" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right"/>
