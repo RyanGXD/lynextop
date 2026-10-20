@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.IO;
+using System.Windows.Media.Imaging;
 
 namespace Lynext;
 
@@ -10,7 +12,35 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Loaded += (_, _) => RefreshHardware();
+        Loaded += (_, _) =>
+        {
+            LoadOptionalBrandImage();
+            RefreshHardware();
+        };
+    }
+
+    private void LoadOptionalBrandImage()
+    {
+        var imagePath = Path.Combine(AppContext.BaseDirectory, "Branding", "LynextLogo.png");
+        if (!File.Exists(imagePath))
+            return;
+
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.UriSource = new Uri(imagePath, UriKind.Absolute);
+            image.EndInit();
+            image.Freeze();
+            BrandImage.Source = image;
+            BrandImage.Visibility = Visibility.Visible;
+            BrandPlaceholder.Visibility = Visibility.Collapsed;
+        }
+        catch
+        {
+            // Keep the vector placeholder if the optional image is missing or invalid.
+        }
     }
 
     private void RefreshHardware_Click(object sender, RoutedEventArgs e) => RefreshHardware();
