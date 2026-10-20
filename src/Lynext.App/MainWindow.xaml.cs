@@ -10,14 +10,17 @@ public partial class MainWindow : Window
 {
     private HardwareSnapshot? _hardware;
     private UpdateInfo? _availableUpdate;
+    private bool _isCheckingUpdates;
 
     public MainWindow()
     {
         InitializeComponent();
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
             LoadOptionalBrandImage();
             RefreshHardware();
+            // Check quietly at startup; only notify the user when a newer stable release exists.
+            await CheckForUpdatesAsync(showWhenUnavailable: false, automatic: true);
         };
     }
 
@@ -92,22 +95,34 @@ public partial class MainWindow : Window
 
     private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
     {
-        if (CheckUpdatesButton.IsEnabled == false)
+        await CheckForUpdatesAsync(showWhenUnavailable: true, automatic: false);
+    }
+
+    private async Task CheckForUpdatesAsync(bool showWhenUnavailable, bool automatic)
+    {
+        if (_isCheckingUpdates)
             return;
 
+        _isCheckingUpdates = true;
         CheckUpdatesButton.IsEnabled = false;
-        UpdateStatusText.Text = "Consultando versões estáveis no GitHub...";
+        UpdateStatusText.Text = automatic
+            ? "Verificando atualizações em segundo plano..."
+            : "Consultando versões estáveis no GitHub...";
+
         try
         {
             _availableUpdate = await UpdateService.CheckLatestAsync();
             if (_availableUpdate is null)
             {
-                UpdateStatusText.Text = "Você está na versão atual ou ainda não existe uma Release estável publicada.";
-                MessageBox.Show(
-                    "Nenhuma atualização estável foi encontrada. Isso pode significar que você já está atualizado ou que ainda não publicamos uma Release com instalador.",
-                    "Lynext — Atualizações",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                UpdateStatusText.Text = "Versão instalada: " + UpdateService.InstalledVersion;
+                if (showWhenUnavailable)
+                {
+                    MessageBox.Show(
+                        "Nenhuma atualização estável foi encontrada. Você já pode estar na versão atual ou ainda não existe uma Release com instalador publicado.",
+                        "Lynext — Atualizações",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
                 return;
             }
 
@@ -115,7 +130,7 @@ public partial class MainWindow : Window
                 ? "Não há notas de versão publicadas."
                 : _availableUpdate.Notes;
             var answer = MessageBox.Show(
-                $"Nova versão: {_availableUpdate.Version}\nVersão instalada: {UpdateService.InstalledVersion}\n\nNotas da versão:\n{TrimNotes(notes)}\n\nDeseja baixar o instalador oficial agora? A instalação só começa após outra confirmação.",
+                $"Uma nova versão está disponível: {_availableUpdate.Version}\nVersão instalada: {UpdateService.InstalledVersion}\n\nNotas da versão:\n{TrimNotes(notes)}\n\nDeseja baixar o instalador oficial agora? A instalação só começa após outra confirmação.",
                 "Lynext — Atualização disponível",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Information);
@@ -149,14 +164,22 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             UpdateStatusText.Text = "Não foi possível verificar ou baixar a atualização.";
-            MessageBox.Show(
-                $"Falha ao verificar/baixar a atualização. Confira sua conexão e tente novamente.\n\nDetalhes: {ex.Message}",
-                "Lynext — Atualizações",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            if (!automatic)
+            {
+                MessageBox.Show(
+                    $"Falha ao verificar/baixar a atualização. Confira sua conexão e tente novamente.\n\nDetalhes: {ex.Message}",
+                    "Lynext — Atualizações",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            else
+            {
+                FeedbackText.Text = "Não foi possível verificar atualizações agora. Você pode tentar novamente pelo botão de atualizações.";
+            }
         }
         finally
         {
+            _isCheckingUpdates = false;
             CheckUpdatesButton.IsEnabled = true;
             CheckUpdatesButton.Content = "Verificar atualizações";
         }
