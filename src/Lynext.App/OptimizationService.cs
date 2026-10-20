@@ -30,8 +30,7 @@ public static class OptimizationService
 
     private static readonly string[] GameModeValues =
     [
-        "AutoGameModeEnabled",
-        "AllowAutoGameMode"
+        "AutoGameModeEnabled"
     ];
 
     public static bool CanRestoreDefaults
@@ -50,8 +49,7 @@ public static class OptimizationService
             try
             {
                 return CanRestoreDefaults
-                    && ReadDword(GameModeValues[0]) == 1
-                    && ReadDword(GameModeValues[1]) == 1;
+                    && ReadDword(GameModeValues[0]) == 1;
             }
             catch { return false; }
         }
@@ -61,14 +59,13 @@ public static class OptimizationService
     {
         try
         {
-            var first = ReadDword(GameModeValues[0]);
-            var second = ReadDword(GameModeValues[1]);
+            var gameMode = ReadDword(GameModeValues[0]);
             if (IsGamerUltraApplied)
                 return "Gamer Ultra está ativo. O backup original está salvo e pode ser restaurado pelo botão Voltar ao padrão.";
             if (CanRestoreDefaults)
                 return "Existe um backup do Gamer Ultra, mas o estado atual do Modo de Jogo difere do momento da ativação. A reversão continua disponível.";
-            if (first == 1 && second == 1)
-                return "As opções do Modo de Jogo já parecem habilitadas no Windows; não existe backup do Lynext para essas opções.";
+            if (gameMode == 1)
+                return "O Modo de Jogo já parece habilitado no Windows; ainda não existe backup do Lynext para restaurar o estado anterior.";
             return "Gamer Ultra ainda não foi aplicado. Nenhuma configuração foi alterada por esta análise.";
         }
         catch (Exception ex)
@@ -102,7 +99,6 @@ public static class OptimizationService
             using var key = Registry.CurrentUser.CreateSubKey(GameBarPath, writable: true)
                 ?? throw new InvalidOperationException("Não foi possível abrir a chave do Modo de Jogo do usuário atual.");
             key.SetValue(GameModeValues[0], 1, RegistryValueKind.DWord);
-            key.SetValue(GameModeValues[1], 1, RegistryValueKind.DWord);
         }
         catch (Exception ex)
         {
@@ -119,10 +115,10 @@ public static class OptimizationService
             }
 
             WriteHistory("Ativar Gamer Ultra", false, ex.Message + rollbackMessage);
-            throw new InvalidOperationException("Falha ao alterar as opções do Modo de Jogo." + rollbackMessage, ex);
+            throw new InvalidOperationException("Falha ao alterar a opção do Modo de Jogo." + rollbackMessage, ex);
         }
 
-        const string success = "Gamer Ultra ativado: as duas opções específicas de ativação automática do Modo de Jogo foram habilitadas. Os valores originais foram salvos para reversão.";
+        const string success = "Etapa segura do Gamer Ultra aplicada: a opção documentada do Modo de Jogo foi habilitada para o usuário atual. O valor original foi salvo para reversão.";
         WriteHistory("Ativar Gamer Ultra", true, success);
         return success;
     }

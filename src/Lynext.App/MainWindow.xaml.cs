@@ -144,7 +144,7 @@ public partial class MainWindow : Window
             else
             {
                 var continueWithoutPoint = MessageBox.Show(
-                    "Você escolheu não criar um ponto de restauração. Esta etapa altera somente duas opções do Modo de Jogo e salva um backup próprio para o botão Voltar ao padrão, mas a proteção é menor sem o ponto do Windows. Deseja prosseguir mesmo assim?",
+                    "Você escolheu não criar um ponto de restauração. Esta etapa altera somente a opção documentada do Modo de Jogo e salva um backup próprio para o botão Voltar ao padrão, mas a proteção é menor sem o ponto do Windows. Deseja prosseguir mesmo assim?",
                     "Lynext — Confirmar sem ponto",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);

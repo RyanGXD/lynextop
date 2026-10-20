@@ -77,7 +77,7 @@
                     <Border Background="#12161C" CornerRadius="8" Padding="16" Margin="0,10,0,0">
                         <StackPanel>
                             <TextBlock Text="Primeira etapa — Gamer Ultra seguro" FontWeight="SemiBold"/>
-                            <TextBlock Text="Esta versão ativa apenas as opções específicas do Modo de Jogo do Windows para o usuário atual e salva os valores originais para reversão. Não desativa Xbox, Game Pass, Minecraft, Gaming Services, Game DVR/capturas, Firewall, Defender, Windows Update nem serviços do sistema. HAGS, energia, RAM e SSD ficam intactos até haver testes por hardware." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
+                            <TextBlock Text="Esta versão ativa apenas a opção documentada do Modo de Jogo do Windows para o usuário atual e salva o valor original para reversão. Não desativa Xbox, Game Pass, Minecraft, Gaming Services, Game DVR/capturas, Firewall, Defender, Windows Update nem serviços do sistema. HAGS, energia, RAM e SSD ficam intactos até haver testes por hardware." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
                         </StackPanel>
                     </Border>
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
