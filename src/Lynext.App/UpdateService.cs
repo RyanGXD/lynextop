@@ -15,9 +15,11 @@ public static class UpdateService
     private const string Repository = "lynextop";
     private static readonly string CurrentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
 
-    private static readonly HttpClient Client = CreateClient();
+    // Keep API checks short, but allow larger installer downloads on slower connections.
+    private static readonly HttpClient ApiClient = CreateApiClient();
+    private static readonly HttpClient DownloadClient = CreateDownloadClient();
 
-    private static HttpClient CreateClient()
+    private static HttpClient CreateApiClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Lynext-Optimizer/" + CurrentVersion);
@@ -26,12 +28,19 @@ public static class UpdateService
         return client;
     }
 
+    private static HttpClient CreateDownloadClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Lynext-Optimizer/" + CurrentVersion);
+        return client;
+    }
+
     public static Version InstalledVersion => Version.TryParse(CurrentVersion, out var version) ? version : new Version(0, 1, 0);
 
     public static async Task<UpdateInfo?> CheckLatestAsync(CancellationToken cancellationToken = default)
     {
         var endpoint = new Uri($"https://api.github.com/repos/{Owner}/{Repository}/releases/latest");
-        using var response = await Client.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await ApiClient.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null; // No stable release has been published yet.
@@ -81,30 +90,43 @@ public static class UpdateService
         var destination = Path.Combine(directory, $"Lynext-Setup-{update.Version}-x64.exe");
         var temporary = destination + ".download";
 
-        using var response = await Client.GetAsync(update.InstallerUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var total = response.Content.Headers.ContentLength;
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+        try
         {
-            var buffer = new byte[81920];
-            long received = 0;
-            int read;
-            while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
-            {
-                received += read;
-                if (received > 1_000_000_000)
-                    throw new InvalidDataException("O instalador excedeu o limite de tamanho permitido.");
-                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                if (total is > 0)
-                    progress?.Report(Math.Clamp((double)received / total.Value * 100d, 0d, 100d));
-            }
-            await output.FlushAsync(cancellationToken);
-        }
+            using var response = await DownloadClient.GetAsync(update.InstallerUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
 
-        File.Move(temporary, destination, overwrite: true);
-        return destination;
+            var total = response.Content.Headers.ContentLength;
+            const long maxInstallerBytes = 1_000_000_000;
+            if (total is > maxInstallerBytes)
+                throw new InvalidDataException("O instalador excede o limite de tamanho permitido.");
+
+            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            {
+                var buffer = new byte[81920];
+                long received = 0;
+                int read;
+                while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
+                {
+                    received += read;
+                    if (received > maxInstallerBytes)
+                        throw new InvalidDataException("O instalador excedeu o limite de tamanho permitido.");
+                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                    if (total is > 0)
+                        progress?.Report(Math.Clamp((double)received / total.Value * 100d, 0d, 100d));
+                }
+                await output.FlushAsync(cancellationToken);
+            }
+
+            File.Move(temporary, destination, overwrite: true);
+            return destination;
+        }
+        finally
+        {
+            // Never leave a partial executable behind if a download fails or is cancelled.
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 
     private static bool TryParseVersion(string tag, out Version version)
