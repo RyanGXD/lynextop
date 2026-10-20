@@ -22,6 +22,17 @@ $brandingDir = Join-Path $repoRoot "src\Lynext.App\Branding"
 $iconPath = Join-Path $brandingDir "Lynext.ico"
 New-Item -ItemType Directory -Path $brandingDir -Force | Out-Null
 Add-Type -AssemblyName System.Drawing
+if (-not ([System.Management.Automation.PSTypeName]'LynextNativeIcon').Type) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class LynextNativeIcon
+{
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool DestroyIcon(IntPtr hIcon);
+}
+"@
+}
 $bitmap = New-Object System.Drawing.Bitmap 256, 256
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -47,7 +58,7 @@ try {
     $iconStream = [System.IO.File]::Create($iconPath)
     try { $nativeIcon.Save($iconStream) } finally { $iconStream.Dispose(); $nativeIcon.Dispose() }
 } finally {
-    [void][System.Runtime.InteropServices.Marshal]::DestroyIcon($hIcon)
+    [void][LynextNativeIcon]::DestroyIcon($hIcon)
 }
 $graphics.Dispose()
 $bitmap.Dispose()
