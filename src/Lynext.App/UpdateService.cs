@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Reflection;
 
 namespace Lynext;
 
@@ -11,7 +12,7 @@ public static class UpdateService
 {
     private const string Owner = "RyanGXD";
     private const string Repository = "lynextop";
-    private const string CurrentVersion = "0.1.0";
+    private static readonly string CurrentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
 
     private static readonly HttpClient Client = CreateClient();
 
