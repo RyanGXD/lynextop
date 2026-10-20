@@ -39,7 +39,8 @@ $font = New-Object System.Drawing.Font("Segoe UI", 132, [System.Drawing.FontStyl
 $format = New-Object System.Drawing.StringFormat
 $format.Alignment = [System.Drawing.StringAlignment]::Center
 $format.LineAlignment = [System.Drawing.StringAlignment]::Center
-$graphics.DrawString("L", $font, [System.Drawing.Brushes]::White, $rect, $format)
+$textRect = [System.Drawing.RectangleF]::new($rect.X, $rect.Y, $rect.Width, $rect.Height)
+$graphics.DrawString("L", $font, [System.Drawing.Brushes]::White, $textRect, $format)
 $hIcon = $bitmap.GetHicon()
 try {
     $nativeIcon = [System.Drawing.Icon]::FromHandle($hIcon)
