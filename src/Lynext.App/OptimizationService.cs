@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Management;
 
 namespace Lynext;
 
@@ -280,6 +281,25 @@ public static class OptimizationService
 
     private static string ReconcilePowerPlan(bool useHighPerformancePowerPlan)
     {
+        if (useHighPerformancePowerPlan)
+        {
+            // Changing the active power scheme can also affect behavior on battery.
+            // Only allow the automatic change when WMI confirms that no battery is present.
+            var batteryDetectionSucceeded = TryDetectBattery(out var batteryPresent);
+            if (!batteryDetectionSucceeded || batteryPresent)
+            {
+                if (File.Exists(PowerBackupPath))
+                {
+                    var existingBackup = LoadPowerBackup();
+                    RestoreManagedPowerScheme(existingBackup);
+                }
+
+                return batteryDetectionSucceeded
+                    ? "O plano de energia não foi alterado por segurança: uma bateria foi detectada. O Gamer Ultra mantém as configurações de energia intactas em notebooks e outros sistemas com bateria."
+                    : "O plano de energia não foi alterado por segurança: não foi possível confirmar a ausência de bateria. O Gamer Ultra mantém as configurações de energia intactas quando a detecção é inconclusiva.";
+            }
+        }
+
         if (!useHighPerformancePowerPlan)
         {
             if (!File.Exists(PowerBackupPath))
@@ -370,6 +390,23 @@ public static class OptimizationService
             || string.Equals(current, backup.AppliedGuid, StringComparison.OrdinalIgnoreCase))
             return;
         throw new InvalidOperationException("O plano de energia atual difere tanto do original quanto do plano aplicado pelo Lynext. Para evitar sobrescrever uma mudança externa, a restauração foi interrompida.");
+    }
+
+    private static bool TryDetectBattery(out bool batteryPresent)
+    {
+        batteryPresent = false;
+        try
+        {
+            using var searcher = new ManagementObjectSearcher("SELECT DeviceID FROM Win32_Battery");
+            using var batteries = searcher.Get();
+            batteryPresent = batteries.Cast<ManagementObject>().Any();
+            return true;
+        }
+        catch
+        {
+            // Unknown hardware state is treated conservatively by the caller.
+            return false;
+        }
     }
 
     private static string GetActivePowerSchemeGuid()

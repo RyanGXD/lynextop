@@ -30,6 +30,12 @@ Os backups são gravados por arquivo temporário e renomeação. O código lê o
 
 Esta fase não desativa nem altera Xbox, Xbox Live, Gaming Services, Xbox Identity Provider, Game Pass, Microsoft Store, Minecraft, Xbox Game Bar, Game DVR/capturas, Defender, Firewall, Windows Update, SmartScreen, UAC, VBS, Integridade da Memória, Secure Boot ou serviços essenciais. Também não altera BCD, HPET, timers, paginação, compressão de memória, afinidade/prioridade de processos, rede, overclock, undervolt, HAGS, configurações por jogo ou inicialização automática.
 
+
+
+### Política de energia e bateria
+
+A troca automática para o plano Alto desempenho só é tentada quando a consulta WMI `Win32_Battery` confirma que não há bateria. Se uma bateria for detectada ou a consulta falhar, a energia não é alterada; se existir uma mudança de energia previamente gerenciada pelo Lynext, ele tenta voltar ao plano original desde que o estado atual ainda corresponda ao estado que o Lynext gerencia. Isso evita apresentar a troca do plano ativo como se alterasse apenas o comportamento quando o computador está conectado à tomada.
+
 ## Limitações da fase
 
 - O plano Alto desempenho pode não estar instalado ou pode não ser aplicável à política de energia do computador.
