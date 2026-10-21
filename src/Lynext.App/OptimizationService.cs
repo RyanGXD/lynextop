@@ -527,16 +527,6 @@ public static class OptimizationService
         }
     }
 
-    private static int? ReadDword(string name)
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(GameBarPath, writable: false);
-        if (key is null || !key.GetValueNames().Contains(name, StringComparer.OrdinalIgnoreCase))
-            return null;
-        if (key.GetValueKind(name) != RegistryValueKind.DWord)
-            return null;
-        return Convert.ToInt32(key.GetValue(name, 0, RegistryValueOptions.DoNotExpandEnvironmentNames));
-    }
-
     private static RestorePointAttempt CreateRestorePointElevated()
     {
         var description = "Lynext Gamer Ultra " + DateTime.Now.ToString("yyyyMMdd-HHmmss");

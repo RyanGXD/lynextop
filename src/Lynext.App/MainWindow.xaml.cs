@@ -19,6 +19,13 @@ public partial class MainWindow : Window
         {
             LoadOptionalBrandImage();
             RefreshHardware();
+            if (OptimizationService.ActiveProfileName is "Gamer" or "Gamer Ultra")
+            {
+                ProfileTitle.Text = OptimizationService.ActiveProfileName;
+                ProfileDescription.Text = OptimizationService.ActiveProfileName == "Gamer Ultra"
+                    ? "Perfil competitivo ampliado restaurado da sessão anterior. Revise o estado atual das configurações antes de continuar."
+                    : "Perfil competitivo equilibrado restaurado da sessão anterior. O estado é lido novamente ao abrir o aplicativo.";
+            }
             UpdateOptimizationUiState();
             // Check quietly at startup; only notify the user when a newer stable release exists.
             await CheckForUpdatesAsync(showWhenUnavailable: false, automatic: true);
@@ -204,7 +211,7 @@ public partial class MainWindow : Window
     {
         if (!OptimizationService.CanRestoreDefaults)
         {
-            MessageBox.Show("Não existe backup do Gamer Ultra para restaurar.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Não há backup ou perfil gerenciado pelo Lynext para restaurar.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
             UpdateOptimizationUiState();
             return;
         }
