@@ -459,7 +459,6 @@ public static class OptimizationService
 
     private static GamerUltraBackup CaptureBackup()
     {
-    {
         using var key = Registry.CurrentUser.OpenSubKey(GameBarPath, writable: false);
         var keyExisted = key is not null;
         var values = new List<RegistryValueBackup>();
