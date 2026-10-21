@@ -172,7 +172,7 @@ public partial class MainWindow : Window
             if (profileName == "Gamer Ultra")
             {
                 var powerChoice = MessageBox.Show(
-                    "O Gamer Ultra pode tentar ativar o plano de energia Alto desempenho do Windows, caso esteja instalado. Isso altera o plano ativo até você mudar de perfil ou usar Voltar ao padrão e pode aumentar consumo, temperatura e ruído. Não garante FPS maior.\n\nDeseja incluir essa alteração?",
+                    "O Gamer Ultra pode tentar ativar o plano de energia Alto desempenho do Windows, caso esteja instalado. Isso altera o plano ativo até você ativar o Gamer ou usar Voltar ao padrão e pode aumentar consumo, temperatura e ruído. Não garante FPS maior.\n\nDeseja incluir essa alteração?",
                     "Lynext — Opção adicional do Gamer Ultra",
                     MessageBoxButton.YesNoCancel,
                     MessageBoxImage.Warning);

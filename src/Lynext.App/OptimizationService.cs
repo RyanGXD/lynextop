@@ -136,9 +136,10 @@ public static class OptimizationService
                 using var key = Registry.CurrentUser.CreateSubKey(GameBarPath, writable: true)
                     ?? throw new InvalidOperationException("Não foi possível abrir a chave do Modo de Jogo do usuário atual.");
                 key.SetValue(GameModeValues[0], 1, RegistryValueKind.DWord);
+                // Mark as potentially changed before read-back so a verification failure still triggers rollback.
+                gameModeChanged = true;
                 if (ReadDword(GameModeValues[0]) != 1)
                     throw new InvalidOperationException("O Modo de Jogo foi gravado, mas a leitura posterior não confirmou o valor esperado.");
-                gameModeChanged = true;
             }
 
             var powerNote = ReconcilePowerPlan(useHighPerformancePowerPlan);
