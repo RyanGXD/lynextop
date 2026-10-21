@@ -103,11 +103,83 @@ public partial class MainWindow : Window
         LiteProfilePanel.Visibility = screens.Contains("lite") ? Visibility.Visible : Visibility.Collapsed;
         BusinessProfilePanel.Visibility = screens.Contains("business") ? Visibility.Visible : Visibility.Collapsed;
         EconomyProfilePanel.Visibility = screens.Contains("economy") ? Visibility.Visible : Visibility.Collapsed;
-        GamingToolsPanel.Visibility = definition.IsImplemented ? Visibility.Visible : Visibility.Collapsed;
+        GamingToolsPanel.Visibility = definition.Name is "Gamer" or "Gamer Ultra" ? Visibility.Visible : Visibility.Collapsed;
+        LiteReportText.Clear();
+        BusinessReportText.Clear();
+        EconomyReportText.Clear();
+        LiteStatusText.Text = "Perfil selecionado; nenhuma configuração foi alterada.";
+        BusinessStatusText.Text = "Perfil selecionado; diagnóstico ainda não executado.";
+        EconomyStatusText.Text = "Perfil selecionado; diagnóstico ainda não executado.";
         UpdateOptimizationUiState();
-        FeedbackText.Text = definition.IsImplemented
-            ? $"Perfil selecionado: {definition.Name}. A seleção não aplica configurações."
-            : $"{definition.Name} está em planejamento e não possui operações disponíveis.";
+        FeedbackText.Text = $"Perfil selecionado: {definition.Name}. A seleção não aplica configurações.";
+    }
+
+    private void OpenNativeSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string uri } || !uri.StartsWith("ms-settings:", StringComparison.Ordinal)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
+            FeedbackText.Text = "Configurações nativas do Windows abertas. O Lynext não alterou opções.";
+        }
+        catch (Exception ex) { FeedbackText.Text = "Não foi possível abrir as Configurações do Windows: " + ex.Message; }
+    }
+
+    private async void LiteDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedProfile != "Lite") return;
+        LiteStatusText.Text = "Lendo itens de inicialização; nenhuma alteração será feita...";
+        var report = await Task.Run(ProfileDiagnosticsService.RunLiteDiagnostic);
+        if (_selectedProfile != "Lite") return;
+        LiteReportText.Text = report;
+        LiteStatusText.Text = "Revisão concluída. Itens não foram ativados nem desativados.";
+        StatusText.Text = "Lite • revisão concluída (somente leitura)";
+        FeedbackText.Text = "Diagnóstico Lite concluído somente para leitura.";
+    }
+
+    private async void BusinessDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedProfile != "Empresarial") return;
+        BusinessStatusText.Text = "Consultando indicadores locais; nenhum dado será enviado...";
+        var report = await Task.Run(ProfileDiagnosticsService.RunBusinessDiagnostic);
+        if (_selectedProfile != "Empresarial") return;
+        BusinessReportText.Text = report;
+        BusinessStatusText.Text = "Triagem concluída; consulte estados desconhecidos e avisos com o administrador.";
+        StatusText.Text = "Empresarial • diagnóstico concluído (somente leitura)";
+        FeedbackText.Text = "Diagnóstico Empresarial local concluído. Nenhuma configuração foi modificada.";
+    }
+
+    private async void EconomyDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedProfile != "Economia") return;
+        EconomyStatusText.Text = "Consultando bateria e planos; nenhuma configuração será modificada...";
+        var report = await Task.Run(() => ProfileDiagnosticsService.RunEconomyDiagnostic());
+        if (_selectedProfile != "Economia") return;
+        EconomyReportText.Text = report;
+        EconomyStatusText.Text = "Consulta concluída; plano ativo e definições não foram alterados.";
+        StatusText.Text = "Economia • consulta concluída (somente leitura)";
+        FeedbackText.Text = "Diagnóstico de energia concluído somente para leitura.";
+    }
+
+    private async void PowerReport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedProfile != "Economia" || sender is not Button { Tag: string reportType }) return;
+        var explanation = reportType == "energy"
+            ? "O Windows analisará a eficiência por 10 segundos e salvará um relatório HTML local. Isso pode exigir privilégios. Nenhuma configuração será alterada. Continuar?"
+            : "O Windows gerará um relatório HTML local. A operação pode levar algum tempo e depender do suporte do dispositivo. Nenhuma configuração será alterada. Continuar?";
+        if (MessageBox.Show(this, explanation, "Lynext — Relatório de energia", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes) return;
+        EconomyStatusText.Text = "Gerando relatório local do Windows...";
+        var result = await Task.Run(() => ProfileDiagnosticsService.GeneratePowerReport(reportType));
+        if (_selectedProfile != "Economia") return;
+        EconomyReportText.Text += Environment.NewLine + (result.Success
+            ? $"Relatório salvo localmente: {result.Output}"
+            : $"Relatório não confirmado: {result.Error}");
+        EconomyStatusText.Text = result.Success ? "Relatório gerado; nenhuma correção automática foi executada." : "Relatório não confirmado.";
+        if (result.Success)
+        {
+            try { Process.Start(new ProcessStartInfo(result.Output) { UseShellExecute = true }); }
+            catch { FeedbackText.Text = "Relatório salvo, mas o Lynext não conseguiu abri-lo automaticamente."; }
+        }
     }
 
     private void PrepareAnalysis_Click(object sender, RoutedEventArgs e)
@@ -340,6 +412,18 @@ public partial class MainWindow : Window
         {
             GamerUltraStateText.Text = OptimizationService.GetProfileStatus("Gamer Ultra");
             StatusText.Text = "Gamer Ultra • " + GamerUltraStateText.Text;
+        }
+        else if (_selectedProfile == "Lite")
+        {
+            StatusText.Text = "Lite • revisão sob demanda; nenhuma alteração automatizada";
+        }
+        else if (_selectedProfile == "Empresarial")
+        {
+            StatusText.Text = "Empresarial • diagnóstico local não executado";
+        }
+        else if (_selectedProfile == "Economia")
+        {
+            StatusText.Text = "Economia • consulta de energia não executada";
         }
         else
         {

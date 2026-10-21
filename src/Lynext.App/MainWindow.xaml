@@ -65,7 +65,7 @@
                     <Button Content="Lite" Tag="Lite" Click="Profile_Click"/>
                     <Button Content="Empresarial" Tag="Empresarial" Click="Profile_Click"/>
                     <Button Content="Economia" Tag="Economia" Click="Profile_Click"/>
-                    <TextBlock Text="Gamer ativa o Modo de Jogo com reversão própria. Gamer Ultra adiciona uma opção explícita de plano Alto desempenho, se disponível. Lite, Empresarial e Economia continuam em planejamento." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
+                    <TextBlock Text="Gamer ativa o Modo de Jogo com reversão própria. Gamer Ultra adiciona uma opção explícita de plano Alto desempenho, se disponível. Lite, Empresarial e Economia oferecem revisão e diagnóstico cautelosos." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
                 </StackPanel>
             </Border>
 
@@ -110,16 +110,49 @@
                             <TextBlock Text="Esses links abrem as páginas nativas para decisão manual. O Lynext não altera preferências por jogo ou inicialização nesta versão." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
                         </StackPanel>
                         <StackPanel x:Name="LiteProfilePanel" Visibility="Collapsed">
-                            <TextBlock Text="Lite" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="Perfil planejado para uma experiência simples e leve. Ainda não possui funções implementadas." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            <TextBlock Text="LITE • USO COTIDIANO" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="Revise o que inicia com o Windows e use os controles nativos para ajustar o que você reconhece. O Lynext não desativa itens, mata processos ou apaga arquivos." TextWrapping="Wrap" Margin="0,7,0,10"/>
+                            <TextBlock x:Name="LiteStatusText" Text="Perfil selecionado; nenhuma configuração foi alterada." Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,4">
+                                <Button Content="Analisar inicialização" Click="LiteDiagnostic_Click"/>
+                                <Button Content="Configurações de inicialização" Tag="ms-settings:startupapps" Click="OpenNativeSettings_Click"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Efeitos visuais e acessibilidade" Tag="ms-settings:easeofaccess-display" Click="OpenNativeSettings_Click"/>
+                                <Button Content="Armazenamento / Sensor de armazenamento" Tag="ms-settings:storagesense" Click="OpenNativeSettings_Click"/>
+                            </StackPanel>
+                            <Button Content="Atividade em segundo plano / uso da bateria" Tag="ms-settings:batterysaver-usagedetails" Click="OpenNativeSettings_Click" HorizontalAlignment="Left"/>
+                            <TextBlock Text="Impacto de inicialização não é medido pelo Lynext. Animações e transparência são principalmente visuais; reduzi-las não garante FPS. Restringir atividade em segundo plano pode reduzir notificações e sincronização. A limpeza é conduzida pelo Windows e não inclui Downloads ou documentos pessoais." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,8"/>
+                            <TextBox x:Name="LiteReportText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="90" MaxHeight="220"/>
                         </StackPanel>
                         <StackPanel x:Name="BusinessProfilePanel" Visibility="Collapsed">
-                            <TextBlock Text="Empresarial" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="Perfil planejado para uso profissional e estabilidade. Ainda não possui funções implementadas." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            <TextBlock Text="EMPRESARIAL • COMPATIBILIDADE" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="Triagem local para suporte profissional. Os resultados distinguem indícios de estado confirmado; rede, impressão, segurança, políticas e Windows Update permanecem intactos." TextWrapping="Wrap" Margin="0,7,0,8"/>
+                            <TextBlock x:Name="BusinessStatusText" Text="Perfil selecionado; diagnóstico ainda não executado." Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,6">
+                                <Button Content="Executar diagnóstico local" Click="BusinessDiagnostic_Click" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
+                                <Button Content="Aplicativos de inicialização" Tag="ms-settings:startupapps" Click="OpenNativeSettings_Click"/>
+                                <Button Content="Windows Update" Tag="ms-settings:windowsupdate" Click="OpenNativeSettings_Click"/>
+                            </StackPanel>
+                            <TextBlock Text="Estados indisponíveis ou desconhecidos não significam falha. Uma conexão ativa não comprova acesso a recursos empresariais; serviço de impressão ativo não comprova que uma impressão funciona. Sinais de política exigem o administrador responsável." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <TextBox x:Name="BusinessReportText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="120" MaxHeight="300"/>
                         </StackPanel>
                         <StackPanel x:Name="EconomyProfilePanel" Visibility="Collapsed">
-                            <TextBlock Text="Economia" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="Perfil planejado para consumo e bateria. Ainda não possui funções implementadas." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            <TextBlock Text="ECONOMIA • ENERGIA E BATERIA" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="Consulta plano ativo, esquemas listados e detecção de bateria. Os ajustes continuam sob controle do Windows, sem substituir planos personalizados ou inventar limites de carga." TextWrapping="Wrap" Margin="0,7,0,8"/>
+                            <TextBlock x:Name="EconomyStatusText" Text="Perfil selecionado; diagnóstico ainda não executado." Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,4">
+                                <Button Content="Analisar energia" Click="EconomyDiagnostic_Click" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
+                                <Button Content="Energia e bateria" Tag="ms-settings:powersleep" Click="OpenNativeSettings_Click"/>
+                                <Button Content="Recomendações de energia" Tag="ms-settings:energyrecommendations" Click="OpenNativeSettings_Click"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Gerar relatório de bateria" Tag="battery" Click="PowerReport_Click"/>
+                                <Button Content="Gerar relatório de eficiência (10 s)" Tag="energy" Click="PowerReport_Click"/>
+                                <Button Content="Relatório de espera moderna" Tag="sleepstudy" Click="PowerReport_Click"/>
+                            </StackPanel>
+                            <TextBlock Text="Relatórios podem levar algum tempo e depender de privilégios e suporte do dispositivo. O relatório de energia executa a análise documentada por 10 segundos. Relatório gerado não significa correção. Configurações de segundo plano podem afetar sincronização e notificações." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,8"/>
+                            <TextBox x:Name="EconomyReportText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="100" MaxHeight="260"/>
                         </StackPanel>
                         <StackPanel x:Name="GamingToolsPanel" Visibility="Collapsed" Margin="0,18,0,0">
                             <StackPanel Orientation="Horizontal">
