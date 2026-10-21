@@ -184,7 +184,7 @@ public static class OptimizationService
         {
             new("gamer.game-mode", OptimizationTargetKind.RegistryValue, @"HKCU\Software\Microsoft\GameBar\AutoGameModeEnabled")
         };
-        if (profileName == "Gamer Ultra" && useHighPerformancePowerPlan)
+        if (profileName == "Gamer Ultra" && (useHighPerformancePowerPlan || HasPendingPowerPlanRestore))
             plannedChanges.Add(new("gamer-ultra.power-plan", OptimizationTargetKind.PowerPlan, "active-power-scheme"));
         if (plannedChanges.Any(change => !OptimizationProfileCatalog.AllowsOptimization(profile.Name, change.OptimizationId)))
             throw new InvalidOperationException("A operação solicitada não pertence ao conjunto autorizado deste perfil.");
