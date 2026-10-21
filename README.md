@@ -2,44 +2,38 @@
   <img src="https://yt3.ggpht.com/yti/APfAmoGOMyd1XqfD-A7GdH6ZROEQTHhlDXUCNLUysvZ9=s108-c-k-c0x00ffffff-no-rj" width="128" height="128"/>
 </p>
 
-# Lynext
+# Lynext Optimizer
 
-Uma ferramenta modular para Windows focada em rede, downloads, diagnostico e otimizacao, com interface propria em PowerShell.
+Ferramenta para Windows focada em diagnóstico, controle de configurações e otimização segura, com uma interface desktop em desenvolvimento.
 
-## Author
+## ⬇️ Download — Windows Beta
 
-Created by Ryan
+**[Abrir Downloads / Releases do Lynext](https://github.com/RyanGXD/lynextop/releases)**
+
+Na versão Beta mais recente, abra **Assets** e baixe o instalador `Lynext-Setup-<versão>-x64.exe`. O arquivo `.sha256` ao lado contém o checksum para verificar a integridade do download.
+
+**Importante:** não baixe `Source code.zip` ou `Source code.tar.gz` para instalar o aplicativo. Esses arquivos contêm o código-fonte, não o instalador. Se a versão mais recente ainda não mostrar o arquivo `.exe` em **Assets**, a publicação do instalador ainda não terminou ou essa Release não foi gerada corretamente.
+
+Esta versão é Beta e deve ser testada com cautela. Revise as alterações antes de aplicá-las e mantenha cópia dos dados importantes.
 
 ## Sobre o projeto
 
-O Lynext foi criado para reunir ferramentas uteis em um so lugar, com uma interface mais limpa e facil de usar.
+O Lynext busca reunir ferramentas de diagnóstico, gerenciamento de energia e configurações do Windows em uma interface modular e fácil de usar.
 
-A proposta do projeto e ser uma central de suporte e ajustes para Windows, trazendo recursos de:
+O projeto mantém também módulos antigos em PowerShell, listados abaixo. Eles são distintos da nova aplicação desktop WPF.
 
-- rede
-- reparo
-- diagnostico
-- downloads
-- desempenho
+## Estrutura PowerShell legada
 
-Tudo organizado em modulos separados, deixando o projeto mais bonito, escalavel e profissional.
+- `lynext.ps1` — loader principal
+- `MainMenu.ps1` — menu principal
+- `NetworkApp.ps1` — módulo de rede
+- `DownloadsApp.ps1` — módulo de downloads
+- `PerformanceApp.ps1` — módulo de desempenho
 
-## Estrutura atual
-
-Atualmente o Lynext funciona com uma estrutura modular:
-
-- `lynext.ps1` -> loader principal
-- `MainMenu.ps1` -> menu principal
-- `NetworkApp.ps1` -> modulo de rede
-- `DownloadsApp.ps1` -> modulo de downloads
-- `PerformanceApp.ps1` -> modulo de desempenho
-
-## Como usar
-
-Execute pelo PowerShell com:
+Para executar o loader legado pelo PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/RyanGXD/lynextop/main/lynext.ps1 | iex
 ```
 
-O loader baixa os modulos para a pasta temporaria do Windows e abre o menu principal.
+O loader baixa os módulos para uma pasta temporária do Windows e abre o menu principal.

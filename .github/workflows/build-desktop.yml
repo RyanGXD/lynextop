@@ -1,0 +1,195 @@
+name: Build Lynext Desktop
+
+on:
+  push:
+    branches:
+      - rebuild/desktop-installer
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Normal CI builds only need read access. Release publishing has separate write permission.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and validate Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Resolve build version
+        id: version
+        shell: pwsh
+        env:
+          BUILD_REF: ${{ github.ref }}
+          BUILD_REF_NAME: ${{ github.ref_name }}
+        run: |
+          $ref = $env:BUILD_REF
+          $tag = $env:BUILD_REF_NAME
+          $stablePattern = '^v(\d+\.\d+\.\d+(?:\.\d+)?)$'
+          $betaPattern = '^v(\d+\.\d+\.\d+(?:\.\d+)?)-beta\.(\d+)$'
+
+          # Exercise accepted and rejected tag formats on every CI run, including branch builds.
+          foreach ($sample in @('v0.1.0', 'v1.2.3.4')) {
+            if ($sample -notmatch $stablePattern) {
+              throw "Stable tag pattern rejected valid sample '$sample'."
+            }
+          }
+          foreach ($sample in @('v0.1.0-beta.1', 'v1.2.3.4-beta.12')) {
+            if ($sample -notmatch $betaPattern) {
+              throw "Beta tag pattern rejected valid sample '$sample'."
+            }
+          }
+          foreach ($sample in @('v0.1', 'v0.1.0-beta', 'v0.1.0-beta.x', 'v1.2.3-rc.1')) {
+            if (($sample -match $stablePattern) -or ($sample -match $betaPattern)) {
+              throw "Tag pattern accepted invalid sample '$sample'."
+            }
+          }
+
+          if ($ref.StartsWith("refs/tags/")) {
+            if ($tag -match $stablePattern) {
+              $version = $Matches[1]
+              $informationalVersion = $version
+              $releaseChannel = "stable"
+            }
+            elseif ($tag -match $betaPattern) {
+              $baseVersion = $Matches[1]
+              $betaNumber = $Matches[2]
+              $version = "$baseVersion-beta.$betaNumber"
+              $informationalVersion = $version
+              $releaseChannel = "beta"
+            }
+            else {
+              throw "Invalid tag '$tag'. Use vMAJOR.MINOR.PATCH (optional fourth numeric component) or vMAJOR.MINOR.PATCH-beta.N."
+            }
+          }
+          else {
+            # Development-branch artifacts are preview builds, never Releases.
+            $version = "0.1.0"
+            $informationalVersion = "$version-preview"
+            $releaseChannel = "preview"
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "informational_version=$informationalVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_channel=$releaseChannel" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Build version: $version"
+          Write-Host "Informational version: $informationalVersion"
+          Write-Host "Channel: $releaseChannel"
+
+      - name: Restore dependencies
+        shell: pwsh
+        run: dotnet restore .\src\Lynext.App\Lynext.App.csproj
+
+      - name: Build app (diagnostic step)
+        shell: pwsh
+        run: dotnet build .\src\Lynext.App\Lynext.App.csproj -c Release "-p:Version=${{ steps.version.outputs.version }}" "-p:InformationalVersion=${{ steps.version.outputs.informational_version }}"
+
+      - name: Run update validation tests
+        shell: pwsh
+        run: dotnet test .\tests\Lynext.UpdateTests\Lynext.UpdateTests.csproj -c Release
+
+      - name: Publish updater helper
+        shell: pwsh
+        run: dotnet publish .\src\Lynext.Updater\Lynext.Updater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true "-p:Version=${{ steps.version.outputs.version }}" "-p:InformationalVersion=${{ steps.version.outputs.informational_version }}" -o .\artifacts\updater-publish
+
+      - name: Build application and installer
+        shell: pwsh
+        run: .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}" -InformationalVersion "${{ steps.version.outputs.informational_version }}"
+
+      - name: Generate and validate installer checksum
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $installerPath = Join-Path $PWD "artifacts\Lynext-Setup-$version-x64.exe"
+          if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+            throw "Expected installer not found: $installerPath"
+          }
+
+          $installer = Get-Item -LiteralPath $installerPath
+          if ($installer.Length -le 0) {
+            throw "Installer is empty."
+          }
+
+          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumPath = $installer.FullName + ".sha256"
+          Set-Content -LiteralPath $checksumPath -Value "$hash  $($installer.Name)" -Encoding ascii -NoNewline
+
+          $checksumText = Get-Content -LiteralPath $checksumPath -Raw
+          if ($checksumText -notmatch "^$hash\s+\*?$([regex]::Escape($installer.Name))$") {
+            throw "Checksum sidecar validation failed."
+          }
+
+          $recomputed = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($recomputed -ne $hash) {
+            throw "Checksum verification failed."
+          }
+
+          Write-Host "Installer validated: $($installer.Name) ($($installer.Length) bytes)"
+          Write-Host "SHA-256: $hash"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lynext-Setup-x64
+          path: |
+            artifacts/Lynext-Setup-*-x64.exe
+            artifacts/Lynext-Setup-*-x64.exe.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Publish versioned GitHub Release
+    needs: build
+    # Only an actual push of an approved version tag can publish. Branch builds and workflow_dispatch never publish.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lynext-Setup-x64
+          path: artifacts
+
+      - name: Verify release assets exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          installers=(artifacts/Lynext-Setup-*-x64.exe)
+          checksums=(artifacts/Lynext-Setup-*-x64.exe.sha256)
+          if [ "${#installers[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
+            echo "Expected exactly one Windows x64 installer and one SHA-256 sidecar." >&2
+            printf 'Installers: %s\n' "${installers[@]}"
+            printf 'Checksums: %s\n' "${checksums[@]}"
+            exit 1
+          fi
+          test -s "${installers[0]}"
+          test -s "${checksums[0]}"
+          echo "Release assets ready:"
+          ls -lh "${installers[0]}" "${checksums[0]}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Lynext ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/Lynext-Setup-*-x64.exe
+            artifacts/Lynext-Setup-*-x64.exe.sha256
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          make_latest: ${{ !contains(github.ref_name, '-beta.') }}
