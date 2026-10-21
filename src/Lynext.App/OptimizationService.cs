@@ -116,6 +116,19 @@ public static class OptimizationService
 
     private static string ApplyProfile(string profileName, bool useHighPerformancePowerPlan)
     {
+        var plannedChanges = new List<OptimizationChange>
+        {
+            new("gamer.game-mode", OptimizationTargetKind.RegistryValue, @"HKCU\Software\Microsoft\GameBar\AutoGameModeEnabled")
+        };
+        if (profileName == "Gamer Ultra" && useHighPerformancePowerPlan)
+            plannedChanges.Add(new("gamer-ultra.power-plan", OptimizationTargetKind.PowerPlan, "active-power-scheme"));
+        var authorization = OptimizationAuthorizationPolicy.Authorize(plannedChanges);
+        if (!authorization.Allowed)
+        {
+            WriteHistoryRequired("Recusa de política: " + profileName, false, authorization.Reason);
+            throw new InvalidOperationException("O otimizador recusou a operação pela política de proteção. " + authorization.Reason);
+        }
+
         Directory.CreateDirectory(ProfileDirectory);
         Directory.CreateDirectory(Path.GetDirectoryName(HistoryPath)!);
 
@@ -203,6 +216,17 @@ public static class OptimizationService
         // Validate conflicts before changing either setting. Never overwrite a manual change silently.
         GamerUltraBackup? registryBackup = hasRegistryBackup ? LoadBackup() : null;
         PowerSchemeBackup? powerBackup = hasPowerBackup ? LoadPowerBackup() : null;
+        var restoreChanges = new List<OptimizationChange>();
+        if (registryBackup is not null)
+            restoreChanges.Add(new("gamer.game-mode", OptimizationTargetKind.RegistryValue, @"HKCU\Software\Microsoft\GameBar\AutoGameModeEnabled"));
+        if (powerBackup is not null)
+            restoreChanges.Add(new("gamer-ultra.power-plan", OptimizationTargetKind.PowerPlan, "active-power-scheme"));
+        var authorization = OptimizationAuthorizationPolicy.Authorize(restoreChanges);
+        if (!authorization.Allowed)
+        {
+            WriteHistoryRequired("Recusa de política: restaurar ajustes", false, authorization.Reason);
+            throw new InvalidOperationException("A restauração foi recusada pela política de proteção. " + authorization.Reason);
+        }
         if (registryBackup is not null)
             EnsureRegistryStateIsRestorable(registryBackup);
         if (powerBackup is not null)
@@ -533,8 +557,14 @@ public static class OptimizationService
     private static GamerUltraBackup LoadBackup()
     {
         var content = File.ReadAllText(BackupPath, Encoding.UTF8);
-        return JsonSerializer.Deserialize<GamerUltraBackup>(content, JsonOptions)
+        var backup = JsonSerializer.Deserialize<GamerUltraBackup>(content, JsonOptions)
             ?? throw new InvalidDataException("O backup do Gamer Ultra está vazio ou inválido; nenhuma restauração foi feita.");
+        if (backup.Values is null || backup.Values.Count != 1
+            || !string.Equals(backup.Values[0].Name, GameModeValues[0], StringComparison.Ordinal)
+            || (backup.Values[0].Exists && !backup.Values[0].DwordValue.HasValue)
+            || (!backup.Values[0].Exists && backup.Values[0].DwordValue.HasValue))
+            throw new InvalidDataException("O backup contém valores fora do catálogo seguro ou inconsistentes; nenhuma restauração foi feita.");
+        return backup;
     }
 
     private static void RestoreBackupValues(GamerUltraBackup backup)
@@ -686,6 +716,13 @@ public static class OptimizationService
         {
             // History failures must not undo or block an otherwise successful, reversible setting change.
         }
+    }
+
+    private static void WriteHistoryRequired(string action, bool success, string details)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(HistoryPath)!);
+        var entry = new HistoryEntry(DateTimeOffset.Now, action, success, details);
+        File.AppendAllText(HistoryPath, JsonSerializer.Serialize(entry) + Environment.NewLine, new UTF8Encoding(false));
     }
 
     private static void TryDeleteFile(string path)

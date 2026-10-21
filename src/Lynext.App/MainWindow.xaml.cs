@@ -110,6 +110,50 @@ public partial class MainWindow : Window
             + " Nenhuma alteração foi aplicada por esta análise.";
     }
 
+    private async void StoreDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        FeedbackText.Text = "Executando diagnóstico somente de leitura da Store, Xbox, AppX e UAC...";
+        try
+        {
+            var report = await Task.Run(StoreDiagnosticsService.Run);
+            var reportText = report.ToDisplayText();
+            if (report.CanRepairUac)
+            {
+                var uac = report.Items.First(item => item.Name == "UAC: EnableLUA");
+                var match = System.Text.RegularExpressions.Regex.Match(uac.Details, @"Valor (-?\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var prior))
+                {
+                    var choice = MessageBox.Show(
+                        reportText + "\n\nFoi detectado EnableLUA diferente de 1. A única ação de reparo automatizada disponível é habilitar novamente o UAC (EnableLUA=1), preservar o valor anterior observado no relatório e solicitar reinicialização. Nenhum serviço, pacote ou outra política será alterado. Deseja aplicar esse reparo específico?",
+                        "Lynext — Confirmar reparo do UAC",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning);
+                    if (choice == MessageBoxResult.Yes)
+                    {
+                        var repair = StoreDiagnosticsService.RepairEnableLua(prior);
+                        reportText += "\n\n" + repair?.Details;
+                    }
+                    else
+                    {
+                        StoreDiagnosticsService.LogRepairDeclined();
+                    }
+                }
+            }
+            else if (report.UacDisabled)
+            {
+                reportText += "\n\nO UAC foi observado desativado, mas existe uma política de organização definindo EnableLUA. O Lynext não oferece alteração automática; consulte o administrador responsável pela política.";
+            }
+            FeedbackText.Text = "Diagnóstico concluído. Consulte o relatório; a causa não foi presumida.";
+            MessageBox.Show(reportText, "Diagnóstico Microsoft Store / Xbox", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            StoreDiagnosticsService.LogDiagnosticFailure(ex.Message);
+            FeedbackText.Text = "O diagnóstico/reparo não foi concluído: " + ex.Message;
+            MessageBox.Show(FeedbackText.Text, "Lynext — Diagnóstico", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private async void ActivateGamer_Click(object sender, RoutedEventArgs e) =>
         await ActivateProfileAsync("Gamer");
 
