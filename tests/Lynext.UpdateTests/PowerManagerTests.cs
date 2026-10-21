@@ -122,7 +122,7 @@ public sealed class PowerManagerTests
         {
             Assert.True(fixture.Service.Activate("gamer").Success);
             var economy = fixture.Service.ReadSnapshot().Profiles.Single(p => p.Id == "economy");
-            fixture.Runner.Set(economy.Guid!, "screen", new PowerSettingValues(15, 20));
+            fixture.Runner.Set(economy.Guid!, PowerManagerFixture.Key("screen"), new PowerSettingValues(15, 20));
             var writesBefore = fixture.Runner.WriteCount;
             var result = fixture.Service.Activate("gamer-ultra");
             Assert.False(result.Success);
