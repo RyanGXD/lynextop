@@ -1,6 +1,6 @@
 # Perfis Gamer e Gamer Ultra — estado da implementação
 
-**Estado:** primeira etapa implementada na branch `rebuild/desktop-installer`. A compilação e os testes do CI devem ser consultados para o commit atual; ainda não foi feita validação funcional em um PC físico nesta tarefa.
+**Estado:** primeira etapa implementada na branch `rebuild/desktop-installer`. O workflow atual valida restauração de dependências, compilação Release, publicação e geração do instalador. Ainda não existe uma suíte automatizada de testes de unidade nem foi feita validação funcional em um PC físico nesta tarefa.
 
 ## O que está implementado
 
