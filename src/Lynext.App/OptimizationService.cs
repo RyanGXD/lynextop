@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Lynext;
 
@@ -17,6 +18,9 @@ public static class OptimizationService
     private static readonly string ProfileDirectory = Path.Combine(DataDirectory, "Profiles", "GamerUltra");
     private static readonly string BackupPath = Path.Combine(ProfileDirectory, "backup.json");
     private static readonly string HistoryPath = Path.Combine(DataDirectory, "Logs", "optimization-history.jsonl");
+    private static readonly string PowerBackupPath = Path.Combine(ProfileDirectory, "power-backup.json");
+    private static readonly string ActiveProfilePath = Path.Combine(ProfileDirectory, "active-profile.json");
+    private const string HighPerformanceSchemeGuid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -25,6 +29,8 @@ public static class OptimizationService
 
     private sealed record RegistryValueBackup(string Name, bool Exists, int? DwordValue);
     private sealed record GamerUltraBackup(DateTimeOffset CreatedAt, bool GameBarKeyExisted, List<RegistryValueBackup> Values);
+    private sealed record PowerSchemeBackup(DateTimeOffset CreatedAt, string OriginalGuid, string AppliedGuid);
+    private sealed record ActiveProfileState(string ProfileName, DateTimeOffset UpdatedAt, bool GameModeWasAlreadyEnabled, bool HighPerformancePlanApplied);
     private sealed record HistoryEntry(DateTimeOffset Timestamp, string Action, bool Success, string Details);
     private sealed record RestorePointPayload(bool Success, string Description, string Error, int? SequenceNumber);
 
@@ -37,107 +43,194 @@ public static class OptimizationService
     {
         get
         {
-            try { return File.Exists(BackupPath); }
+            try { return File.Exists(BackupPath) || File.Exists(PowerBackupPath) || File.Exists(ActiveProfilePath); }
             catch { return false; }
         }
     }
 
-    public static bool IsGamerUltraApplied
+    public static string? ActiveProfileName
     {
         get
         {
-            try
-            {
-                return CanRestoreDefaults
-                    && ReadDword(GameModeValues[0]) == 1;
-            }
-            catch { return false; }
+            try { return LoadProfileState()?.ProfileName; }
+            catch { return null; }
         }
     }
+
+    public static bool IsGamerApplied =>
+        string.Equals(ActiveProfileName, "Gamer", StringComparison.OrdinalIgnoreCase)
+        && SafeReadGameMode() == 1;
+
+    public static bool IsGamerUltraApplied =>
+        (string.Equals(ActiveProfileName, "Gamer Ultra", StringComparison.OrdinalIgnoreCase)
+            || (ActiveProfileName is null && File.Exists(BackupPath)))
+        && SafeReadGameMode() == 1;
 
     public static string GetStatusSummary()
     {
         try
         {
             var gameMode = ReadDword(GameModeValues[0]);
-            if (IsGamerUltraApplied)
-                return "Gamer Ultra está ativo. O backup original está salvo e pode ser restaurado pelo botão Voltar ao padrão.";
-            if (CanRestoreDefaults)
-                return "Existe um backup do Gamer Ultra, mas o estado atual do Modo de Jogo difere do momento da ativação. A reversão continua disponível.";
+            var activeProfile = LoadProfileState();
+            if (activeProfile is not null)
+            {
+                if (gameMode != 1)
+                    return $"O perfil {activeProfile.ProfileName} está registrado, mas o Modo de Jogo não está confirmado como ativo. Revise o estado antes de aplicar novamente.";
+                var powerText = activeProfile.HighPerformancePlanApplied
+                    ? " O plano Alto desempenho também foi solicitado e verificado."
+                    : " Nenhuma alteração no plano de energia é atribuída a este perfil.";
+                return $"Perfil {activeProfile.ProfileName} ativo. O Modo de Jogo está habilitado.{powerText} O backup e o histórico permanecem salvos.";
+            }
+            if (File.Exists(PowerBackupPath))
+                return "Há um backup de energia do Lynext aguardando restauração ou reconciliação. O aplicativo não deve sobrescrever uma mudança externa sem detectar o conflito.";
+            if (File.Exists(BackupPath) && gameMode == 1)
+                return "Existe um backup legado do Gamer Ultra e o Modo de Jogo está habilitado. A reversão continua disponível.";
             if (gameMode == 1)
-                return "O Modo de Jogo já parece habilitado no Windows; ainda não existe backup do Lynext para restaurar o estado anterior.";
-            return "Gamer Ultra ainda não foi aplicado. Nenhuma configuração foi alterada por esta análise.";
+                return "O Modo de Jogo já está habilitado no Windows; ainda não há um perfil gerenciado ativo pelo Lynext.";
+            return "Nenhum perfil Gamer está ativo pelo Lynext. A análise não modifica configurações.";
         }
         catch (Exception ex)
         {
-            return "Não foi possível ler o estado do Modo de Jogo: " + ex.Message;
+            return "Não foi possível ler o estado dos perfis: " + ex.Message;
         }
     }
 
-    public static async Task<RestorePointAttempt> TryCreateRestorePointAsync()
+    private static int? SafeReadGameMode()
+    {
+        try { return ReadDword(GameModeValues[0]); }
+        catch { return null; }
+    }
+
+        public static async Task<RestorePointAttempt> TryCreateRestorePointAsync()
     {
         return await Task.Run(CreateRestorePointElevated);
     }
 
-    public static string ApplyGamerUltra()
+    public static string ApplyGamer() => ApplyProfile("Gamer", useHighPerformancePowerPlan: false);
+
+    public static string ApplyGamerUltra() => ApplyGamerUltra(useHighPerformancePowerPlan: false);
+
+    public static string ApplyGamerUltra(bool useHighPerformancePowerPlan) =>
+        ApplyProfile("Gamer Ultra", useHighPerformancePowerPlan);
+
+    private static string ApplyProfile(string profileName, bool useHighPerformancePowerPlan)
     {
         Directory.CreateDirectory(ProfileDirectory);
         Directory.CreateDirectory(Path.GetDirectoryName(HistoryPath)!);
 
-        if (IsGamerUltraApplied)
+        var originalGameMode = ReadDword(GameModeValues[0]);
+        var gameModeAlreadyEnabled = originalGameMode == 1;
+        var createdRegistryBackupForThisAttempt = false;
+
+        if (!gameModeAlreadyEnabled && !File.Exists(BackupPath))
         {
-            const string alreadyApplied = "Gamer Ultra já está ativo. O backup original foi preservado.";
-            WriteHistory("Ativar Gamer Ultra", true, alreadyApplied);
-            return alreadyApplied;
+            SaveBackup(CaptureBackup());
+            createdRegistryBackupForThisAttempt = true;
         }
 
-        if (!File.Exists(BackupPath))
-            SaveBackup(CaptureBackup());
-
+        var gameModeChanged = false;
         try
         {
-            using var key = Registry.CurrentUser.CreateSubKey(GameBarPath, writable: true)
-                ?? throw new InvalidOperationException("Não foi possível abrir a chave do Modo de Jogo do usuário atual.");
-            key.SetValue(GameModeValues[0], 1, RegistryValueKind.DWord);
+            if (!gameModeAlreadyEnabled)
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(GameBarPath, writable: true)
+                    ?? throw new InvalidOperationException("Não foi possível abrir a chave do Modo de Jogo do usuário atual.");
+                key.SetValue(GameModeValues[0], 1, RegistryValueKind.DWord);
+                if (ReadDword(GameModeValues[0]) != 1)
+                    throw new InvalidOperationException("O Modo de Jogo foi gravado, mas a leitura posterior não confirmou o valor esperado.");
+                gameModeChanged = true;
+            }
+
+            var powerNote = ReconcilePowerPlan(useHighPerformancePowerPlan);
+            var profileState = new ActiveProfileState(
+                profileName,
+                DateTimeOffset.Now,
+                gameModeAlreadyEnabled,
+                useHighPerformancePowerPlan && powerNote.Contains("Plano Alto desempenho ativado e verificado", StringComparison.OrdinalIgnoreCase));
+            SaveProfileState(profileState);
+
+            var status = gameModeAlreadyEnabled
+                ? "O Modo de Jogo já estava habilitado; o Lynext preservou esse estado sem atribuir a alteração a si mesmo."
+                : "Modo de Jogo habilitado e confirmado por leitura posterior.";
+            var message = $"{profileName} registrado. {status} {powerNote} Xbox, Game Pass, Minecraft, Game Bar/Game DVR, segurança, serviços e Windows Update não foram alterados. Nenhum ganho de FPS é presumido.";
+            WriteHistory("Ativar " + profileName, true, message);
+            return message;
         }
         catch (Exception ex)
         {
-            var rollbackMessage = "";
+            var rollbackNotes = new List<string>();
+            if (gameModeChanged && File.Exists(BackupPath))
+            {
+                try
+                {
+                    RestoreBackupValues(LoadBackup());
+                    VerifyBackupRestored(LoadBackup());
+                    if (createdRegistryBackupForThisAttempt)
+                        File.Delete(BackupPath);
+                    rollbackNotes.Add("O valor do Modo de Jogo foi restaurado após a falha.");
+                }
+                catch (Exception rollbackEx)
+                {
+                    rollbackNotes.Add("A reversão do Modo de Jogo também falhou; preserve o backup em " + BackupPath + ". " + rollbackEx.Message);
+                }
+            }
+
             try
             {
-                RestoreBackupValues(LoadBackup());
-                rollbackMessage = " Os valores anteriores foram restaurados.";
+                if (File.Exists(PowerBackupPath))
+                    RestoreManagedPowerScheme(LoadPowerBackup());
             }
-            catch (Exception rollbackEx)
+            catch (Exception rollbackPowerEx)
             {
-                rollbackMessage = " Atenção: a reversão automática também falhou; preserve o backup em " + BackupPath
-                    + ". Detalhes da reversão: " + rollbackEx.Message;
+                rollbackNotes.Add("A reversão do plano de energia não pôde ser confirmada; preserve o backup em " + PowerBackupPath + ". " + rollbackPowerEx.Message);
             }
 
-            WriteHistory("Ativar Gamer Ultra", false, ex.Message + rollbackMessage);
-            throw new InvalidOperationException("Falha ao alterar a opção do Modo de Jogo." + rollbackMessage, ex);
+            var details = ex.Message + (rollbackNotes.Count > 0 ? " " + string.Join(" ", rollbackNotes) : "");
+            WriteHistory("Ativar " + profileName, false, details);
+            throw new InvalidOperationException($"Falha ao ativar {profileName}. {details}", ex);
         }
-
-        const string success = "Etapa segura do Gamer Ultra aplicada: a opção documentada do Modo de Jogo foi habilitada para o usuário atual. O valor original foi salvo para reversão.";
-        WriteHistory("Ativar Gamer Ultra", true, success);
-        return success;
     }
 
     public static string RestoreDefaults()
     {
-        if (!File.Exists(BackupPath))
-            throw new InvalidOperationException("Não há backup do Gamer Ultra para restaurar.");
+        var hasRegistryBackup = File.Exists(BackupPath);
+        var hasPowerBackup = File.Exists(PowerBackupPath);
+        if (!hasRegistryBackup && !hasPowerBackup && !File.Exists(ActiveProfilePath))
+            throw new InvalidOperationException("Não há ajustes gerenciados pelo Lynext para restaurar.");
 
-        var backup = LoadBackup();
-        RestoreBackupValues(backup);
-        File.Delete(BackupPath);
+        // Validate conflicts before changing either setting. Never overwrite a manual change silently.
+        GamerUltraBackup? registryBackup = hasRegistryBackup ? LoadBackup() : null;
+        PowerSchemeBackup? powerBackup = hasPowerBackup ? LoadPowerBackup() : null;
+        if (registryBackup is not null)
+            EnsureRegistryStateIsRestorable(registryBackup);
+        if (powerBackup is not null)
+            EnsurePowerPlanStateIsRestorable(powerBackup);
 
-        var message = "Valores originais do Modo de Jogo restaurados. Nenhum serviço ou recurso do Xbox, Firewall, Defender, Windows Update, energia, RAM ou SSD foi alterado por esta reversão.";
+        if (registryBackup is not null)
+        {
+            RestoreBackupValues(registryBackup);
+            VerifyBackupRestored(registryBackup);
+        }
+
+        if (powerBackup is not null)
+        {
+            RestoreManagedPowerScheme(powerBackup);
+            // A method verifies the active GUID after switching or confirming the original state.
+        }
+
+        // Backups are deleted only after all managed settings have been read back and verified.
+        if (hasRegistryBackup)
+            File.Delete(BackupPath);
+        if (hasPowerBackup)
+            File.Delete(PowerBackupPath);
+        TryDeleteFile(ActiveProfilePath);
+
+        const string message = "Os ajustes gerenciados pelo Lynext foram restaurados e verificados. Configurações que já estavam ativas antes da aplicação foram preservadas; Xbox, Game Pass, Minecraft, Game Bar/Game DVR, segurança, serviços e Windows Update não foram alterados.";
         WriteHistory("Voltar ao padrão", true, message);
         return message;
     }
 
-    public static string GetHistory()
+        public static string GetHistory()
     {
         if (!File.Exists(HistoryPath))
             return "Ainda não há alterações do Lynext registradas.";
@@ -168,7 +261,204 @@ public static class OptimizationService
         }
     }
 
+    private static ActiveProfileState? LoadProfileState()
+    {
+        if (!File.Exists(ActiveProfilePath))
+            return null;
+        var content = File.ReadAllText(ActiveProfilePath, Encoding.UTF8);
+        return JsonSerializer.Deserialize<ActiveProfileState>(content, JsonOptions)
+            ?? throw new InvalidDataException("O estado persistente do perfil está vazio ou inválido.");
+    }
+
+    private static void SaveProfileState(ActiveProfileState state)
+    {
+        var temporaryPath = ActiveProfilePath + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(state, JsonOptions), new UTF8Encoding(false));
+        File.Move(temporaryPath, ActiveProfilePath, overwrite: true);
+    }
+
+    private static string ReconcilePowerPlan(bool useHighPerformancePowerPlan)
+    {
+        if (!useHighPerformancePowerPlan)
+        {
+            if (!File.Exists(PowerBackupPath))
+                return "O plano de energia permaneceu inalterado.";
+            var existingBackup = LoadPowerBackup();
+            EnsurePowerPlanStateIsRestorable(existingBackup);
+            RestoreManagedPowerScheme(existingBackup);
+            return "O plano de energia original foi restaurado; o backup permanece guardado para a restauração final.";
+        }
+
+        var schemes = RunPowerCfg("/list");
+        if (!schemes.Contains(HighPerformanceSchemeGuid, StringComparison.OrdinalIgnoreCase))
+        {
+            if (File.Exists(PowerBackupPath))
+            {
+                var oldBackup = LoadPowerBackup();
+                RestoreManagedPowerScheme(oldBackup);
+            }
+            return "O plano Alto desempenho não está listado neste computador. Nenhuma alteração de energia foi feita.";
+        }
+
+        var current = GetActivePowerSchemeGuid();
+        if (string.Equals(current, HighPerformanceSchemeGuid, StringComparison.OrdinalIgnoreCase))
+            return "O plano Alto desempenho já estava ativo; nenhuma mudança de plano foi necessária.";
+
+        PowerSchemeBackup backup;
+        if (File.Exists(PowerBackupPath))
+        {
+            backup = LoadPowerBackup();
+            if (!string.Equals(backup.AppliedGuid, HighPerformanceSchemeGuid, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("O backup de energia pertence a outro plano gerenciado; é necessária uma revisão manual antes de trocar novamente.");
+            if (!string.Equals(current, backup.OriginalGuid, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(current, backup.AppliedGuid, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("O plano de energia foi alterado externamente após a otimização. O Lynext não vai sobrescrever essa mudança silenciosamente.");
+        }
+        else
+        {
+            backup = new PowerSchemeBackup(DateTimeOffset.Now, current, HighPerformanceSchemeGuid);
+            SavePowerBackup(backup);
+        }
+
+        RunPowerCfg("/setactive " + HighPerformanceSchemeGuid);
+        var after = GetActivePowerSchemeGuid();
+        if (!string.Equals(after, HighPerformanceSchemeGuid, StringComparison.OrdinalIgnoreCase))
+        {
+            try { RunPowerCfg("/setactive " + backup.OriginalGuid); }
+            catch { /* Keep the verified backup for manual recovery. */ }
+            throw new InvalidOperationException("O comando de energia terminou, mas a leitura posterior não confirmou o plano Alto desempenho.");
+        }
+
+        return "Plano Alto desempenho ativado e verificado. Ele pode aumentar consumo, temperatura e ruído; não garante FPS maior.";
+    }
+
+    private static void SavePowerBackup(PowerSchemeBackup backup)
+    {
+        var temporaryPath = PowerBackupPath + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(backup, JsonOptions), new UTF8Encoding(false));
+        File.Move(temporaryPath, PowerBackupPath, overwrite: true);
+    }
+
+    private static PowerSchemeBackup LoadPowerBackup()
+    {
+        var content = File.ReadAllText(PowerBackupPath, Encoding.UTF8);
+        var backup = JsonSerializer.Deserialize<PowerSchemeBackup>(content, JsonOptions)
+            ?? throw new InvalidDataException("O backup do plano de energia está vazio ou inválido.");
+        if (!Guid.TryParse(backup.OriginalGuid, out _) || !Guid.TryParse(backup.AppliedGuid, out _))
+            throw new InvalidDataException("O backup do plano de energia contém um GUID inválido.");
+        return backup;
+    }
+
+    private static void RestoreManagedPowerScheme(PowerSchemeBackup backup)
+    {
+        var current = GetActivePowerSchemeGuid();
+        if (string.Equals(current, backup.OriginalGuid, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (!string.Equals(current, backup.AppliedGuid, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("O usuário ou outro programa mudou o plano de energia desde a aplicação. O Lynext preservou essa escolha; revise manualmente antes de restaurar.");
+        RunPowerCfg("/setactive " + backup.OriginalGuid);
+        var after = GetActivePowerSchemeGuid();
+        if (!string.Equals(after, backup.OriginalGuid, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("A reversão do plano de energia foi solicitada, mas o plano original não foi confirmado.");
+    }
+
+    private static void EnsurePowerPlanStateIsRestorable(PowerSchemeBackup backup)
+    {
+        var current = GetActivePowerSchemeGuid();
+        if (string.Equals(current, backup.OriginalGuid, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(current, backup.AppliedGuid, StringComparison.OrdinalIgnoreCase))
+            return;
+        throw new InvalidOperationException("O plano de energia atual difere tanto do original quanto do plano aplicado pelo Lynext. Para evitar sobrescrever uma mudança externa, a restauração foi interrompida.");
+    }
+
+    private static string GetActivePowerSchemeGuid()
+    {
+        var output = RunPowerCfg("/getactivescheme");
+        var match = Regex.Match(output, @"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}");
+        if (!match.Success || !Guid.TryParse(match.Value, out var guid))
+            throw new InvalidOperationException("Não foi possível identificar o GUID do plano de energia ativo.");
+        return guid.ToString("D");
+    }
+
+    private static string RunPowerCfg(string arguments)
+    {
+        var executable = Path.Combine(Environment.SystemDirectory, "powercfg.exe");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Não foi possível iniciar powercfg.exe.");
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync();
+        var standardErrorTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit((int)TimeSpan.FromSeconds(15).TotalMilliseconds))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException("powercfg.exe excedeu o limite de 15 segundos.");
+        }
+
+        Task.WaitAll(standardOutputTask, standardErrorTask);
+        var output = standardOutputTask.Result + Environment.NewLine + standardErrorTask.Result;
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"powercfg.exe falhou (código {process.ExitCode}): {output.Trim()}");
+        return output;
+    }
+
+    private static void EnsureRegistryStateIsRestorable(GamerUltraBackup backup)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(GameBarPath, writable: false);
+        var hasValue = key is not null && key.GetValueNames().Contains(GameModeValues[0], StringComparer.OrdinalIgnoreCase);
+        var isAppliedValue = hasValue && key!.GetValueKind(GameModeValues[0]) == RegistryValueKind.DWord
+            && Convert.ToInt32(key.GetValue(GameModeValues[0], 0, RegistryValueOptions.DoNotExpandEnvironmentNames)) == 1;
+        var original = backup.Values.FirstOrDefault(v => string.Equals(v.Name, GameModeValues[0], StringComparison.OrdinalIgnoreCase));
+        var matchesOriginal = original is not null && original.Exists == hasValue
+            && (!hasValue || (key!.GetValueKind(GameModeValues[0]) == RegistryValueKind.DWord
+                && original.DwordValue == Convert.ToInt32(key.GetValue(GameModeValues[0], 0, RegistryValueOptions.DoNotExpandEnvironmentNames))));
+        if (!isAppliedValue && !matchesOriginal)
+            throw new InvalidOperationException("O valor do Modo de Jogo foi alterado externamente depois da ativação. O Lynext não vai sobrescrever a alteração silenciosamente.");
+    }
+
+    private static void VerifyBackupRestored(GamerUltraBackup backup)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(GameBarPath, writable: false);
+        foreach (var value in backup.Values)
+        {
+            var exists = key is not null && key.GetValueNames().Contains(value.Name, StringComparer.OrdinalIgnoreCase);
+            if (exists != value.Exists)
+                throw new InvalidOperationException($"A verificação da reversão falhou para {value.Name}: a existência não corresponde ao backup.");
+            if (value.Exists)
+            {
+                if (key!.GetValueKind(value.Name) != RegistryValueKind.DWord
+                    || value.DwordValue != Convert.ToInt32(key.GetValue(value.Name, 0, RegistryValueOptions.DoNotExpandEnvironmentNames)))
+                    throw new InvalidOperationException($"A verificação da reversão falhou para {value.Name}: o tipo ou valor não corresponde ao backup.");
+            }
+        }
+        if (!backup.GameBarKeyExisted)
+        {
+            using var remainingKey = Registry.CurrentUser.OpenSubKey(GameBarPath, writable: false);
+            if (remainingKey is not null && remainingKey.GetValueNames().Length == 0 && remainingKey.GetSubKeyNames().Length == 0)
+                throw new InvalidOperationException("A chave vazia do Modo de Jogo deveria ter sido removida, mas ainda existe.");
+        }
+    }
+
+    private static int? ReadDword(string name)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(GameBarPath, writable: false);
+        if (key is null || !key.GetValueNames().Contains(name, StringComparer.OrdinalIgnoreCase))
+            return null;
+        if (key.GetValueKind(name) != RegistryValueKind.DWord)
+            return null;
+        return Convert.ToInt32(key.GetValue(name, 0, RegistryValueOptions.DoNotExpandEnvironmentNames));
+    }
+
     private static GamerUltraBackup CaptureBackup()
+    {
     {
         using var key = Registry.CurrentUser.OpenSubKey(GameBarPath, writable: false);
         var keyExisted = key is not null;

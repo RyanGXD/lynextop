@@ -77,19 +77,20 @@ public partial class MainWindow : Window
         ProfileTitle.Text = profile;
         ProfileDescription.Text = profile switch
         {
-            "Gamer Ultra" => "Foco competitivo: a primeira etapa ativa apenas o Modo de Jogo do Windows, com backup e opção de reversão. Xbox, Minecraft, Game Pass, Firewall e serviços essenciais ficam preservados.",
-            "Gamer" => "Priorizar FPS, frametime estável e baixa latência com base no hardware detectado. Este perfil ainda está em planejamento.",
+            "Gamer Ultra" => "Foco competitivo ampliado: Modo de Jogo e opção explícita de plano Alto desempenho, se instalado. A energia pode aumentar consumo, temperatura e ruído; não há promessa de ganho de FPS.",
+            "Gamer" => "Perfil competitivo equilibrado: habilita o Modo de Jogo do Windows quando necessário, mantém energia inalterada e oferece atalhos para revisar gráficos e inicialização.",
             "Lite" => "Reduzir excessos sem comprometer recursos úteis, segurança ou estabilidade do Windows. Este perfil ainda está em planejamento.",
             "Empresarial" => "Ajustes conservadores, preservando impressoras, rede, políticas e confiabilidade. Este perfil ainda está em planejamento.",
             "Economia" => "Reduzir consumo, calor e gasto de bateria, respeitando os limites do equipamento. Este perfil ainda está em planejamento.",
             _ => "Selecione um perfil para preparar a análise."
         };
 
+        ActivateGamerButton.IsEnabled = profile == "Gamer";
         ActivateGamerUltraButton.IsEnabled = profile == "Gamer Ultra";
         RestoreDefaultsButton.IsEnabled = OptimizationService.CanRestoreDefaults;
         StatusText.Text = OptimizationService.IsGamerUltraApplied
             ? "Gamer Ultra ativo"
-            : (profile == "Gamer Ultra" ? "Gamer Ultra pronto" : "Nenhuma otimização aplicada");
+            : (OptimizationService.IsGamerApplied ? "Gamer ativo" : (profile is "Gamer" or "Gamer Ultra" ? profile + " pronto" : "Nenhum perfil Gamer ativo"));
         FeedbackText.Text = $"Perfil selecionado: {profile}. {OptimizationService.GetStatusSummary()}";
     }
 
@@ -100,19 +101,26 @@ public partial class MainWindow : Window
             + " Nenhuma alteração foi aplicada por esta análise.";
     }
 
-    private async void ActivateGamerUltra_Click(object sender, RoutedEventArgs e)
+    private async void ActivateGamer_Click(object sender, RoutedEventArgs e) =>
+        await ActivateProfileAsync("Gamer");
+
+    private async void ActivateGamerUltra_Click(object sender, RoutedEventArgs e) =>
+        await ActivateProfileAsync("Gamer Ultra");
+
+    private async Task ActivateProfileAsync(string profileName)
     {
-        if (ProfileTitle.Text != "Gamer Ultra")
+        if (ProfileTitle.Text != profileName)
         {
-            MessageBox.Show("Selecione o perfil Gamer Ultra antes de ativá-lo.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show($"Selecione o perfil {profileName} antes de ativá-lo.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
+        ActivateGamerButton.IsEnabled = false;
         ActivateGamerUltraButton.IsEnabled = false;
         try
         {
             var restoreChoice = MessageBox.Show(
-                "Antes de ativar o Gamer Ultra, recomendamos tentar criar um ponto de restauração do Windows. Esse ponto pode ocupar espaço em disco e não garante a recuperação de todos os arquivos, aplicativos ou configurações. O Lynext também salva os valores exatos que esta etapa modifica para permitir uma reversão própria.\n\nDeseja tentar criar um ponto de restauração?",
+                $"Antes de ativar {profileName}, recomendamos tentar criar um ponto de restauração do Windows. O ponto pode ocupar espaço em disco e não garante a recuperação de todos os arquivos ou aplicativos. O Lynext também salva backups próprios dos ajustes que ele realmente modifica.\n\nDeseja tentar criar um ponto de restauração?",
                 "Lynext — Proteção antes de otimizar",
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Warning);
@@ -132,7 +140,7 @@ public partial class MainWindow : Window
                 else
                 {
                     var continueWithoutPoint = MessageBox.Show(
-                        $"O Lynext não conseguiu confirmar a criação do ponto de restauração.\n\nMotivo: {attempt.Error}\n\nNenhuma otimização foi aplicada ainda. Esta primeira etapa altera somente a opção documentada do Modo de Jogo e guarda um backup próprio. Deseja prosseguir sem o ponto de restauração?",
+                        $"O Lynext não conseguiu confirmar a criação do ponto de restauração.\n\nMotivo: {attempt.Error}\n\nNenhuma otimização foi aplicada ainda. Esta etapa usa o backup próprio para os ajustes que conseguir modificar. Deseja prosseguir sem o ponto do Windows?",
                         "Lynext — Ponto de restauração não confirmado",
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Warning);
@@ -144,7 +152,7 @@ public partial class MainWindow : Window
             else
             {
                 var continueWithoutPoint = MessageBox.Show(
-                    "Você escolheu não criar um ponto de restauração. Esta etapa altera somente a opção documentada do Modo de Jogo e salva um backup próprio para o botão Voltar ao padrão, mas a proteção é menor sem o ponto do Windows. Deseja prosseguir mesmo assim?",
+                    "Você escolheu não criar um ponto de restauração. As alterações desta versão são limitadas e possuem backups próprios, mas a proteção é menor sem o ponto do Windows. Deseja prosseguir mesmo assim?",
                     "Lynext — Confirmar sem ponto",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
@@ -153,20 +161,35 @@ public partial class MainWindow : Window
                 restorePointNote = "A ativação foi autorizada sem tentar criar um ponto de restauração.";
             }
 
-            var result = OptimizationService.ApplyGamerUltra();
+            var useHighPerformancePowerPlan = false;
+            if (profileName == "Gamer Ultra")
+            {
+                var powerChoice = MessageBox.Show(
+                    "O Gamer Ultra pode tentar ativar o plano de energia Alto desempenho do Windows, caso esteja instalado. Isso altera o plano ativo até você mudar de perfil ou usar Voltar ao padrão e pode aumentar consumo, temperatura e ruído. Não garante FPS maior.\n\nDeseja incluir essa alteração?",
+                    "Lynext — Opção adicional do Gamer Ultra",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Warning);
+                if (powerChoice == MessageBoxResult.Cancel)
+                    return;
+                useHighPerformancePowerPlan = powerChoice == MessageBoxResult.Yes;
+            }
+
+            var result = profileName == "Gamer"
+                ? OptimizationService.ApplyGamer()
+                : OptimizationService.ApplyGamerUltra(useHighPerformancePowerPlan);
             UpdateOptimizationUiState();
             FeedbackText.Text = result + " " + restorePointNote;
             MessageBox.Show(
-                result + "\n\n" + restorePointNote + "\n\nNenhum serviço do Xbox/Game Pass, Firewall, Defender ou Windows Update foi desativado. Nenhum ganho de FPS é presumido: a etapa precisa ser medida no jogo.",
-                "Lynext — Gamer Ultra",
+                result + "\n\n" + restorePointNote + "\n\nNenhum ganho de FPS é presumido: valide o resultado no jogo com medições repetíveis.",
+                "Lynext — " + profileName,
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            FeedbackText.Text = "Não foi possível aplicar o Gamer Ultra: " + ex.Message;
+            FeedbackText.Text = "Não foi possível ativar o perfil: " + ex.Message;
             MessageBox.Show(
-                $"Não foi possível aplicar o Gamer Ultra. Se um erro aconteceu durante a alteração, o Lynext tentou restaurar os valores anteriores.\n\nDetalhes: {ex.Message}",
+                $"Não foi possível ativar {profileName}. O Lynext tentou reverter ajustes feitos durante esta tentativa quando foi seguro.\n\nDetalhes: {ex.Message}",
                 "Lynext — Falha na ativação",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -177,7 +200,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RestoreDefaults_Click(object sender, RoutedEventArgs e)
+        private void RestoreDefaults_Click(object sender, RoutedEventArgs e)
     {
         if (!OptimizationService.CanRestoreDefaults)
         {
@@ -187,7 +210,7 @@ public partial class MainWindow : Window
         }
 
         var confirm = MessageBox.Show(
-            "O Lynext vai restaurar somente os valores do Modo de Jogo que ele salvou antes da ativação. Xbox, Game Pass, Game DVR, Firewall, Defender, serviços e plano de energia não serão alterados por esta reversão. Deseja continuar?",
+            "O Lynext vai restaurar os valores originais que ainda estiverem sob seu controle, incluindo Modo de Jogo e plano de energia quando gerenciados. Se detectar uma mudança externa, interromperá a reversão daquele ajuste para não sobrescrever sua escolha. Deseja continuar?",
             "Lynext — Voltar ao padrão",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
@@ -240,13 +263,16 @@ public partial class MainWindow : Window
     private void UpdateOptimizationUiState()
     {
         RestoreDefaultsButton.IsEnabled = OptimizationService.CanRestoreDefaults;
+        ActivateGamerButton.IsEnabled = ProfileTitle.Text == "Gamer";
         ActivateGamerUltraButton.IsEnabled = ProfileTitle.Text == "Gamer Ultra";
         if (OptimizationService.IsGamerUltraApplied)
             StatusText.Text = "Gamer Ultra ativo";
-        else if (ProfileTitle.Text == "Gamer Ultra")
-            StatusText.Text = "Gamer Ultra pronto";
+        else if (OptimizationService.IsGamerApplied)
+            StatusText.Text = "Gamer ativo";
+        else if (ProfileTitle.Text is "Gamer" or "Gamer Ultra")
+            StatusText.Text = ProfileTitle.Text + " pronto";
         else
-            StatusText.Text = "Nenhuma otimização aplicada";
+            StatusText.Text = "Nenhum perfil Gamer ativo";
     }
 
     private async void CheckUpdates_Click(object sender, RoutedEventArgs e)

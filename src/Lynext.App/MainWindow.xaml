@@ -65,7 +65,7 @@
                     <Button Content="Lite" Tag="Lite" Click="Profile_Click"/>
                     <Button Content="Empresarial" Tag="Empresarial" Click="Profile_Click"/>
                     <Button Content="Economia" Tag="Economia" Click="Profile_Click"/>
-                    <TextBlock Text="Os perfis Gamer, Lite, Empresarial e Economia ainda estão em planejamento. O Gamer Ultra começa com uma etapa segura e reversível." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
+                    <TextBlock Text="Gamer ativa o Modo de Jogo com reversão própria. Gamer Ultra adiciona uma opção explícita de plano Alto desempenho, se disponível. Lite, Empresarial e Economia continuam em planejamento." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
                 </StackPanel>
             </Border>
 
@@ -77,11 +77,12 @@
                     <Border Background="#12161C" CornerRadius="8" Padding="16" Margin="0,10,0,0">
                         <StackPanel>
                             <TextBlock Text="Primeira etapa — Gamer Ultra seguro" FontWeight="SemiBold"/>
-                            <TextBlock Text="Esta versão ativa apenas a opção documentada do Modo de Jogo do Windows para o usuário atual e salva o valor original para reversão. Não desativa Xbox, Game Pass, Minecraft, Gaming Services, Game DVR/capturas, Firewall, Defender, Windows Update nem serviços do sistema. HAGS, energia, RAM e SSD ficam intactos até haver testes por hardware." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
+                            <TextBlock Text="Gamer: habilita e verifica o Modo de Jogo quando necessário. Gamer Ultra: oferece, com confirmação separada, a ativação do plano Alto desempenho do Windows se ele estiver instalado. O Lynext salva o estado original e detecta conflitos antes de restaurar. Xbox, Game Pass, Minecraft, Game Bar/Game DVR, Firewall, Defender, Windows Update e serviços essenciais permanecem intactos." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
                         </StackPanel>
                     </Border>
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                        <Button x:Name="ActivateGamerUltraButton" Content="Ativar Gamer Ultra" Click="ActivateGamerUltra_Click" IsEnabled="False" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
+                        <Button x:Name="ActivateGamerButton" Content="Ativar Gamer" Click="ActivateGamer_Click" IsEnabled="False"/>
+                    <Button x:Name="ActivateGamerUltraButton" Content="Ativar Gamer Ultra" Click="ActivateGamerUltra_Click" IsEnabled="False" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
                         <Button x:Name="RestoreDefaultsButton" Content="Voltar ao padrão" Click="RestoreDefaults_Click" IsEnabled="False"/>
                         <Button Content="Configurações gráficas" Click="OpenGraphicsSettings_Click"/>
                     </StackPanel>
