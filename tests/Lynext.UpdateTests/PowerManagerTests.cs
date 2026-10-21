@@ -204,7 +204,7 @@ public sealed class PowerManagerTests
         public void Set(string guid, string key, PowerSettingValues values) => Schemes[guid].Values[key] = values;
         public string ReadDescription(string schemeGuid) => Schemes.TryGetValue(schemeGuid, out var scheme) ? scheme.Description : string.Empty;
         public bool IsPowerManaged() => PowerManaged;
-        public PowerCommandResult Run(params string[] a)
+        public PowerCfgCommandResult Run(params string[] a)
         {
             switch (a[0].ToLowerInvariant())
             {

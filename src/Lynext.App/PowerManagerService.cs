@@ -6,8 +6,8 @@ using Microsoft.Win32;
 
 namespace Lynext;
 
-public sealed record PowerCommandResult(int ExitCode, string Output, string Error = "");
-public interface IPowerCommandRunner { PowerCommandResult Run(params string[] arguments); }
+public sealed record PowerCfgCommandResult(int ExitCode, string Output, string Error = "");
+public interface IPowerCommandRunner { PowerCfgCommandResult Run(params string[] arguments); }
 public interface IPowerSchemeDescriptionReader { string ReadDescription(string schemeGuid); }
 public interface IPowerPolicyDetector { bool IsPowerManaged(); }
 public sealed class WindowsPowerPolicyDetector : IPowerPolicyDetector
@@ -44,7 +44,7 @@ public sealed class PowerSchemeDescriptionReader : IPowerSchemeDescriptionReader
 
 public sealed class PowerCfgCommandRunner : IPowerCommandRunner
 {
-    public PowerCommandResult Run(params string[] arguments)
+    public PowerCfgCommandResult Run(params string[] arguments)
     {
         var start = new ProcessStartInfo("powercfg.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
@@ -312,7 +312,7 @@ public sealed class PowerManagerService
         return new(ac, dc);
     }
 
-    private PowerCommandResult Execute(params string[] args)
+    private PowerCfgCommandResult Execute(params string[] args)
     {
         if (args.Length == 0 || !new[] { "/list", "/getactivescheme", "/a", "/duplicatescheme", "/changename", "/query", "/setacvalueindex", "/setdcvalueindex", "/setactive" }.Contains(args[0], StringComparer.OrdinalIgnoreCase))
             throw new InvalidOperationException("Operação powercfg não permitida pelo catálogo do Power Manager.");
