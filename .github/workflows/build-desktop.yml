@@ -8,11 +8,13 @@ on:
       - "v*"
   workflow_dispatch:
 
+# Normal CI builds only need read access. Release publishing has separate write permission.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
+    name: Build and validate Windows installer
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -31,19 +33,39 @@ jobs:
         id: version
         shell: pwsh
         run: |
+          $ref = "${{ github.ref }}"
           $tag = "${{ github.ref_name }}"
-          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
-            if ($tag -notmatch '^v\d+\.\d+\.\d+(\.\d+)?$') {
-              throw "Only stable numeric release tags are supported by this workflow."
+
+          if ($ref.StartsWith("refs/tags/")) {
+            if ($tag -match '^v(\d+\.\d+\.\d+(?:\.\d+)?)$') {
+              $version = $Matches[1]
+              $informationalVersion = $version
+              $releaseChannel = "stable"
             }
-            $version = $tag.TrimStart('v')
-            $informationalVersion = $version
-          } else {
+            elseif ($tag -match '^v(\d+\.\d+\.\d+(?:\.\d+)?)-beta\.(\d+)$') {
+              $baseVersion = $Matches[1]
+              $betaNumber = $Matches[2]
+              $version = "$baseVersion-beta.$betaNumber"
+              $informationalVersion = $version
+              $releaseChannel = "beta"
+            }
+            else {
+              throw "Invalid tag '$tag'. Use vMAJOR.MINOR.PATCH (optional fourth numeric component) or vMAJOR.MINOR.PATCH-beta.N."
+            }
+          }
+          else {
+            # Development-branch artifacts are preview builds, never Releases.
             $version = "0.1.0"
             $informationalVersion = "$version-preview"
+            $releaseChannel = "preview"
           }
+
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "informational_version=$informationalVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_channel=$releaseChannel" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Build version: $version"
+          Write-Host "Informational version: $informationalVersion"
+          Write-Host "Channel: $releaseChannel"
 
       - name: Restore dependencies
         shell: pwsh
@@ -51,7 +73,7 @@ jobs:
 
       - name: Build app (diagnostic step)
         shell: pwsh
-        run: dotnet build .\src\Lynext.App\Lynext.App.csproj -c Release -p:Version="${{ steps.version.outputs.version }}" -p:InformationalVersion="${{ steps.version.outputs.informational_version }}"
+        run: dotnet build .\src\Lynext.App\Lynext.App.csproj -c Release "-p:Version=${{ steps.version.outputs.version }}" "-p:InformationalVersion=${{ steps.version.outputs.informational_version }}"
 
       - name: Run update validation tests
         shell: pwsh
@@ -65,27 +87,87 @@ jobs:
         shell: pwsh
         run: .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}" -InformationalVersion "${{ steps.version.outputs.informational_version }}"
 
-      - name: Generate installer checksum
+      - name: Generate and validate installer checksum
         shell: pwsh
         run: |
-          $installer = Get-ChildItem .\artifacts\Lynext-Setup-*-x64.exe | Select-Object -First 1
-          if (-not $installer) { throw "Installer artifact not found." }
+          $version = "${{ steps.version.outputs.version }}"
+          $installerPath = Join-Path $PWD "artifacts\Lynext-Setup-$version-x64.exe"
+          if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+            throw "Expected installer not found: $installerPath"
+          }
+
+          $installer = Get-Item -LiteralPath $installerPath
+          if ($installer.Length -le 0) {
+            throw "Installer is empty."
+          }
+
           $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           $checksumPath = $installer.FullName + ".sha256"
           Set-Content -LiteralPath $checksumPath -Value "$hash  $($installer.Name)" -Encoding ascii -NoNewline
+
+          $checksumText = Get-Content -LiteralPath $checksumPath -Raw
+          if ($checksumText -notmatch "^$hash\s+\*?$([regex]::Escape($installer.Name))$") {
+            throw "Checksum sidecar validation failed."
+          }
+
+          $recomputed = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($recomputed -ne $hash) {
+            throw "Checksum verification failed."
+          }
+
+          Write-Host "Installer validated: $($installer.Name) ($($installer.Length) bytes)"
+          Write-Host "SHA-256: $hash"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: Lynext-Setup-x64
-          path: artifacts/Lynext-Setup-*-x64.exe*
+          path: |
+            artifacts/Lynext-Setup-*-x64.exe
+            artifacts/Lynext-Setup-*-x64.exe.sha256
           if-no-files-found: error
           retention-days: 14
 
+  publish-release:
+    name: Publish versioned GitHub Release
+    needs: build
+    # Only an actual push of an approved version tag can publish. Branch builds and workflow_dispatch never publish.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lynext-Setup-x64
+          path: artifacts
+
+      - name: Verify release assets exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          installers=(artifacts/Lynext-Setup-*-x64.exe)
+          checksums=(artifacts/Lynext-Setup-*-x64.exe.sha256)
+          if [ "${#installers[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
+            echo "Expected exactly one Windows x64 installer and one SHA-256 sidecar." >&2
+            printf 'Installers: %s\n' "${installers[@]}"
+            printf 'Checksums: %s\n' "${checksums[@]}"
+            exit 1
+          fi
+          test -s "${installers[0]}"
+          test -s "${checksums[0]}"
+          echo "Release assets ready:"
+          ls -lh "${installers[0]}" "${checksums[0]}"
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: Lynext ${{ github.ref_name }}
           generate_release_notes: true
-          files: artifacts/Lynext-Setup-*-x64.exe*
+          files: |
+            artifacts/Lynext-Setup-*-x64.exe
+            artifacts/Lynext-Setup-*-x64.exe.sha256
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          make_latest: ${{ !contains(github.ref_name, '-beta.') }}
