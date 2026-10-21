@@ -39,7 +39,7 @@ public sealed class ProfileDiagnosticsTests
             "Bateria: estado desconhecido (consulta indisponível). Não será presumido um notebook.",
             _ => new(false, "", "indisponível", null));
         Assert.Contains("estado desconhecido", report);
-        Assert.Contains("não será presumido um notebook", report);
+        Assert.Contains("Não será presumido um notebook", report);
         Assert.Contains("não confirmado", report);
         Assert.Contains("lista indisponível", report);
     }
