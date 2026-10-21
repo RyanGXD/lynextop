@@ -29,17 +29,23 @@ public static class OptimizationProfileCatalog
     ];
     public static IReadOnlyList<OptimizationProfileDefinition> Profiles { get; } =
     [
-        new("gamer-ultra", "Gamer Ultra", "Modo de Jogo e plano Alto desempenho opcional, quando compatível.",
-            ["gamer.game-mode", "gamer-ultra.power-plan"], true),
-        new("gamer", "Gamer", "Modo de Jogo do Windows; sem alterações adicionais de energia.",
-            ["gamer.game-mode"], true),
-        new("lite", "Lite", "Revisão de inicialização, aparência, atividade em segundo plano e armazenamento; alterações são feitas nas configurações nativas.", [], true),
-        new("business", "Empresarial", "Diagnóstico local e somente de leitura de rede, impressão, políticas e segurança; nenhuma política ou serviço é alterado.", [], true),
-        new("economy", "Economia", "Consulta energia, bateria e tempos atuais; oferece atalhos nativos e relatórios powercfg locais, sem substituir seu plano.", [], true)
+        new("gamer-ultra", "Lynext Ultra Performance", "Desempenho máximo do processador, com configurações de energia para jogos e tarefas exigentes.",
+            ["gamer.game-mode", "gamer-ultra.power-plan", "power-manager.gamer-ultra"], true),
+        new("gamer", "Lynext Gamer", "Perfil de desempenho para jogos, com gerenciamento de energia próprio.",
+            ["gamer.game-mode", "power-manager.gamer"], true),
+        new("lite", "Lynext Lite", "Perfil cotidiano baseado em Balanced, preservando o gerenciamento de CPU do Windows.", ["power-manager.lite"], true),
+        new("business", "Lynext Empresarial", "Configuração conservadora baseada em Balanced, com foco em compatibilidade e previsibilidade.", ["power-manager.business"], true),
+        new("economy", "Lynext Economia", "Perfil eficiente baseado em Balanced; respeita os recursos de bateria oferecidos pelo Windows e pelo equipamento.", ["power-manager.economy"], true)
     ];
 
     public static OptimizationProfileDefinition? FindByName(string name) =>
-        Profiles.FirstOrDefault(profile => string.Equals(profile.Name, name, StringComparison.Ordinal));
+        Profiles.FirstOrDefault(profile => string.Equals(profile.Name, name, StringComparison.Ordinal)
+            || string.Equals(profile.Id, name, StringComparison.Ordinal)
+            || (profile.Id == "gamer-ultra" && name == "Gamer Ultra")
+            || (profile.Id == "gamer" && name == "Gamer")
+            || (profile.Id == "business" && name == "Empresarial")
+            || (profile.Id == "lite" && name == "Lite")
+            || (profile.Id == "economy" && name == "Economia"));
 
     /// <summary>Selection is a pure view operation and never authorizes system changes.</summary>
     public static IReadOnlyList<string> GetSelectionOperations(string name) => [];
@@ -55,12 +61,13 @@ public static class OptimizationProfileCatalog
 
     public static IReadOnlyList<string> GetVisiblePanels(string name) => name switch
     {
-        "Gamer Ultra" => ["gamer-ultra"],
-        "Gamer" => ["gamer"],
-        "Lite" => ["lite"],
-        "Empresarial" => ["business"],
-        "Economia" => ["economy"],
+        "Gamer Ultra" or "Lynext Ultra Performance" or "gamer-ultra" => ["gamer-ultra"],
+        "Gamer" or "Lynext Gamer" or "gamer" => ["gamer"],
+        "Lite" or "Lynext Lite" or "lite" => ["lite"],
+        "Empresarial" or "Lynext Empresarial" or "business" => ["business"],
+        "Economia" or "Lynext Economia" or "economy" => ["economy"],
         _ => []
     };
 }
+
 

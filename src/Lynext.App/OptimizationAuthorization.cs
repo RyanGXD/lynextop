@@ -34,7 +34,12 @@ public static class OptimizationAuthorizationPolicy
             "Read active scheme GUID before and after powercfg.",
             "Change the active power scheme to the built-in High Performance scheme.",
             "Return to the captured original GUID only if the active scheme still matches Lynext's applied GUID.",
-            OptimizationTargetKind.PowerPlan, "active-power-scheme")
+            OptimizationTargetKind.PowerPlan, "active-power-scheme"),
+        new("power-manager.gamer-ultra", "Manage only the Lynext Ultra Performance scheme derived from Balanced.", "User explicitly confirms; scheme GUID and ownership marker are verified.", "CPU minimum 100% may raise battery use, temperature, and fan noise.", "Query the named scheme values and active GUID.", "Set only documented screen, sleep, disk, and CPU indexes for the Lynext-owned scheme.", "Restore captured settings only after conflict checks; retain all plans.", OptimizationTargetKind.PowerPlan, "managed-scheme:gamer-ultra"),
+        new("power-manager.gamer", "Manage only the Lynext Gamer scheme derived from Balanced.", "User explicitly confirms; scheme GUID and ownership marker are verified.", "CPU minimum 100% may raise battery use, temperature, and fan noise.", "Query the named scheme values and active GUID.", "Set only documented screen, sleep, disk, and CPU indexes for the Lynext-owned scheme.", "Restore captured settings only after conflict checks; retain all plans.", OptimizationTargetKind.PowerPlan, "managed-scheme:gamer"),
+        new("power-manager.business", "Manage only the Lynext Empresarial scheme derived from Balanced.", "User explicitly confirms; scheme GUID and ownership marker are verified.", "Balanced CPU values are preserved.", "Query the named scheme values and active GUID.", "Set only documented screen, sleep, and disk indexes for the Lynext-owned scheme.", "Restore captured settings only after conflict checks; retain all plans.", OptimizationTargetKind.PowerPlan, "managed-scheme:business"),
+        new("power-manager.lite", "Manage only the Lynext Lite scheme derived from Balanced.", "User explicitly confirms; scheme GUID and ownership marker are verified.", "Balanced CPU values are preserved.", "Query the named scheme values and active GUID.", "Set only documented screen, sleep, and disk indexes for the Lynext-owned scheme.", "Restore captured settings only after conflict checks; retain all plans.", OptimizationTargetKind.PowerPlan, "managed-scheme:lite"),
+        new("power-manager.economy", "Manage only the Lynext Economia scheme derived from Balanced.", "User explicitly confirms; scheme GUID and ownership marker are verified.", "A disk idle value of Never may increase battery use on HDD systems.", "Query the named scheme values and active GUID.", "Set only documented screen, sleep, and disk indexes for the Lynext-owned scheme.", "Restore captured settings only after conflict checks; retain all plans.", OptimizationTargetKind.PowerPlan, "managed-scheme:economy")
     ];
 
     private static readonly IReadOnlyDictionary<string, OptimizationCatalogEntry> Approved =
@@ -87,3 +92,4 @@ public static class OptimizationAuthorizationPolicy
             || normalized.Contains("\\AppModel", StringComparison.OrdinalIgnoreCase);
     }
 }
+

@@ -115,14 +115,14 @@ public static class OptimizationService
 
             if (mode is null || mode is not (0 or 1))
                 return profileName == "Gamer" && HasPendingPowerPlanRestore
-                    ? modeText + "; um ajuste de energia do Gamer Ultra ainda aguarda restauração explícita"
+                    ? modeText + "; um ajuste de energia do Lynext Ultra Performance ainda aguarda restauração explícita"
                     : modeText;
 
             if (mode == 0)
                 return registeredForThisProfile
                     ? "Aplicação parcial: configuração registrada, mas Modo de Jogo está desabilitado no Windows"
                     : profileName == "Gamer" && HasPendingPowerPlanRestore
-                        ? modeText + "; um ajuste de energia do Gamer Ultra ainda aguarda restauração explícita"
+                        ? modeText + "; um ajuste de energia do Lynext Ultra Performance ainda aguarda restauração explícita"
                         : modeText;
 
             var gameModeOwnedByProfile = registeredForThisProfile && state?.GameModeWasAlreadyEnabled == false;
@@ -147,7 +147,7 @@ public static class OptimizationService
             }
 
             var pendingUltra = profileName == "Gamer" && HasPendingPowerPlanRestore
-                ? "; um ajuste de energia do Gamer Ultra ainda aguarda restauração explícita"
+                ? "; um ajuste de energia do Lynext Ultra Performance ainda aguarda restauração explícita"
                 : string.Empty;
             return $"{modeText}; {ownership}{pendingUltra}";
         }
@@ -198,8 +198,8 @@ public static class OptimizationService
         if (profileName == "Gamer" && HasPendingPowerPlanRestore)
         {
             WriteHistoryRequired("Ativação Gamer bloqueada", false,
-                "Há uma alteração de energia gerenciada anteriormente pelo Gamer Ultra. Restaure-a explicitamente antes de aplicar o perfil Gamer.");
-            throw new InvalidOperationException("Há um plano de energia ainda gerenciado pelo Gamer Ultra. Use Voltar ao padrão nessa tela antes de ativar Gamer; o perfil Gamer não altera nem incorpora opções Ultra.");
+                "Há uma alteração de energia gerenciada anteriormente pelo Lynext Ultra Performance. Restaure-a explicitamente antes de aplicar o perfil Lynext Gamer.");
+            throw new InvalidOperationException("Há um plano de energia ainda gerenciado pelo Lynext Ultra Performance. Use Voltar ao padrão nessa tela antes de ativar Lynext Gamer; este perfil não altera nem incorpora opções Ultra.");
         }
 
         Directory.CreateDirectory(ProfileDirectory);
@@ -231,7 +231,7 @@ public static class OptimizationService
 
             var powerNote = profileName == "Gamer Ultra"
                 ? ReconcilePowerPlan(useHighPerformancePowerPlan)
-                : "O perfil Gamer não modifica o plano de energia.";
+                : "O perfil Lynext Gamer não modifica o plano de energia.";
             var profileState = new ActiveProfileState(
                 profileName,
                 DateTimeOffset.Now,
@@ -349,7 +349,7 @@ public static class OptimizationService
                 })
                 .Where(record => record is not null)
                 .Select(record =>
-                    $"{record!.Timestamp.ToLocalTime():dd/MM/yyyy HH:mm:ss} | {(record.Success ? "OK" : "FALHA")} | {record.Action}{Environment.NewLine}{record.Details}")
+                    $"{record!.Timestamp.ToLocalTime():dd/MM/yyyy HH:mm:ss} | {(record.Success ? "OK" : "FALHA")} | {OfficialProfileNames(record.Action)}{Environment.NewLine}{OfficialProfileNames(record.Details)}")
                 .ToArray();
 
             return records.Length == 0
@@ -394,8 +394,8 @@ public static class OptimizationService
                 }
 
                 return batteryDetectionSucceeded
-                    ? "O plano de energia não foi alterado por segurança: uma bateria foi detectada. O Gamer Ultra mantém as configurações de energia intactas em notebooks e outros sistemas com bateria."
-                    : "O plano de energia não foi alterado por segurança: não foi possível confirmar a ausência de bateria. O Gamer Ultra mantém as configurações de energia intactas quando a detecção é inconclusiva.";
+                    ? "O plano de energia não foi alterado por segurança: uma bateria foi detectada. O Lynext Ultra Performance mantém as configurações de energia intactas em notebooks e outros sistemas com bateria."
+                    : "O plano de energia não foi alterado por segurança: não foi possível confirmar a ausência de bateria. O Lynext Ultra Performance mantém as configurações de energia intactas quando a detecção é inconclusiva.";
             }
         }
 
@@ -672,7 +672,7 @@ public static class OptimizationService
 
     private static RestorePointAttempt CreateRestorePointElevated()
     {
-        var description = "Lynext Gamer Ultra " + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var description = "Lynext Ultra Performance " + DateTime.Now.ToString("yyyyMMdd-HHmmss");
         var workDirectory = Path.Combine(Path.GetTempPath(), "Lynext", "RestorePoints");
         var token = Guid.NewGuid().ToString("N");
         var scriptPath = Path.Combine(workDirectory, "create-" + token + ".ps1");
@@ -784,7 +784,7 @@ public static class OptimizationService
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(HistoryPath)!);
-            var entry = new HistoryEntry(DateTimeOffset.Now, action, success, details);
+            var entry = new HistoryEntry(DateTimeOffset.Now, OfficialProfileNames(action), success, OfficialProfileNames(details));
             File.AppendAllText(HistoryPath, JsonSerializer.Serialize(entry) + Environment.NewLine, new UTF8Encoding(false));
         }
         catch
@@ -796,9 +796,13 @@ public static class OptimizationService
     private static void WriteHistoryRequired(string action, bool success, string details)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(HistoryPath)!);
-        var entry = new HistoryEntry(DateTimeOffset.Now, action, success, details);
+        var entry = new HistoryEntry(DateTimeOffset.Now, OfficialProfileNames(action), success, OfficialProfileNames(details));
         File.AppendAllText(HistoryPath, JsonSerializer.Serialize(entry) + Environment.NewLine, new UTF8Encoding(false));
     }
+
+    private static string OfficialProfileNames(string value) => value
+        .Replace("Gamer Ultra", "Lynext Ultra Performance", StringComparison.Ordinal)
+        .Replace("Gamer", "Lynext Gamer", StringComparison.Ordinal);
 
     private static void TryDeleteFile(string path)
     {
@@ -806,4 +810,5 @@ public static class OptimizationService
         catch { }
     }
 }
+
 

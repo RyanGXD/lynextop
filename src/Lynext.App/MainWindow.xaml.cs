@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private UpdatePreferences _updatePreferences = UpdatePreferences.Default;
     private DispatcherTimer? _updateTimer;
     private PreparedUpdate? _preparedUpdate;
+    private readonly PowerManagerService _powerManager = new();
 
     public MainWindow()
     {
@@ -93,25 +94,97 @@ public partial class MainWindow : Window
         if (definition is null)
             return;
 
-        _selectedProfile = definition.Name;
+        _selectedProfile = profile;
         ProfileTitle.Text = definition.Name;
         ProfileDescription.Text = definition.Description;
         var screens = OptimizationProfileCatalog.GetVisiblePanels(definition.Name);
         WelcomeProfilePanel.Visibility = Visibility.Collapsed;
-        GamerProfilePanel.Visibility = screens.Contains("gamer") ? Visibility.Visible : Visibility.Collapsed;
-        GamerUltraProfilePanel.Visibility = screens.Contains("gamer-ultra") ? Visibility.Visible : Visibility.Collapsed;
+        GamerProfilePanel.Visibility = screens.Contains("gamer") || screens.Contains("gamer-ultra") ? Visibility.Visible : Visibility.Collapsed;
+        GamerUltraProfilePanel.Visibility = Visibility.Collapsed;
         LiteProfilePanel.Visibility = screens.Contains("lite") ? Visibility.Visible : Visibility.Collapsed;
         BusinessProfilePanel.Visibility = screens.Contains("business") ? Visibility.Visible : Visibility.Collapsed;
         EconomyProfilePanel.Visibility = screens.Contains("economy") ? Visibility.Visible : Visibility.Collapsed;
-        GamingToolsPanel.Visibility = definition.Name is "Gamer" or "Gamer Ultra" ? Visibility.Visible : Visibility.Collapsed;
+        GamingToolsPanel.Visibility = definition.Id is "gamer" or "gamer-ultra" ? Visibility.Visible : Visibility.Collapsed;
         LiteReportText.Clear();
         BusinessReportText.Clear();
         EconomyReportText.Clear();
         LiteStatusText.Text = "Perfil selecionado; nenhuma configuração foi alterada.";
         BusinessStatusText.Text = "Perfil selecionado; diagnóstico ainda não executado.";
         EconomyStatusText.Text = "Perfil selecionado; diagnóstico ainda não executado.";
+        PowerManagerPanel.Visibility = Visibility.Visible;
+        RefreshPowerManagerView();
         UpdateOptimizationUiState();
         FeedbackText.Text = $"Perfil selecionado: {definition.Name}. A seleção não aplica configurações.";
+    }
+
+    private string? SelectedPowerProfileId => _selectedProfile switch
+    {
+        "Gamer Ultra" or "Lynext Ultra Performance" => "gamer-ultra",
+        "Gamer" or "Lynext Gamer" => "gamer",
+        "Empresarial" or "Lynext Empresarial" => "business",
+        "Lite" or "Lynext Lite" => "lite",
+        "Economia" or "Lynext Economia" => "economy",
+        _ => null
+    };
+
+    private void RefreshPowerManager_Click(object sender, RoutedEventArgs e) => RefreshPowerManagerView();
+
+    private void RefreshPowerManagerView()
+    {
+        if (SelectedPowerProfileId is not { } profileId) return;
+        PowerManagerStateText.Text = "Consultando planos e valores reais do Windows...";
+        _ = RefreshPowerManagerViewAsync(profileId);
+    }
+
+    private async Task RefreshPowerManagerViewAsync(string profileId)
+    {
+        try
+        {
+            var state = await Task.Run(() => (_powerManager.ReadSnapshot(), _powerManager.ReadProfileSettings(profileId)));
+            if (SelectedPowerProfileId != profileId) return;
+            var snapshot = state.Item1;
+            var profile = snapshot.Profiles.FirstOrDefault(p => p.Id == profileId);
+            PowerManagerStateText.Text = snapshot.Error is not null
+                ? "Falha na consulta: estado dos planos desconhecido. " + snapshot.Error
+                : $"Selecionado: {ProfileTitle.Text} • Ativo no Windows: {snapshot.ActiveName ?? "não confirmado"} ({snapshot.ActiveGuid ?? "GUID desconhecido"}) • Plano do perfil: {profile?.State ?? "estado desconhecido"}{(profile?.IsActive == true ? " • ATIVO" : "")}.";
+            PowerManagerValuesText.Text = state.Item2;
+            RestorePowerPlanButton.IsEnabled = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lynext", "PowerManager", "activation-backup.json"));
+            ActivatePowerProfileButton.IsEnabled = profile is not null && (profile.State is "Ainda não criado" or "Plano Lynext encontrado");
+        }
+        catch (Exception ex)
+        {
+            PowerManagerStateText.Text = "Falha ao consultar powercfg; estado desconhecido. " + ex.Message;
+            PowerManagerValuesText.Text = "Os valores não foram confirmados.";
+            ActivatePowerProfileButton.IsEnabled = false;
+        }
+    }
+
+    private async void ActivatePowerProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedPowerProfileId is not { } profileId) return;
+        var definition = PowerManagerService.Profiles.Single(p => p.Id == profileId);
+        var warning = definition.CpuMax
+            ? "Após esta confirmação, o Lynext criará se necessário e configurará os cinco planos derivados de Balanced. Tela e suspensão: AC Nunca, DC 60 minutos; disco: Nunca em AC/DC. Ultra Performance e Gamer também terão CPU mínima/máxima em 100% AC/DC. Isso pode elevar consumo, temperatura e ruído, inclusive na bateria, e não garante FPS. O plano Balanced e demais esquemas serão preservados. Continuar?"
+            : "Após esta confirmação, o Lynext criará se necessário e configurará os cinco planos derivados de Balanced. Tela e suspensão: AC Nunca, DC 60 minutos; disco: Nunca em AC/DC. CPU dos perfis Empresarial, Lite e Economia permanece herdada. O plano Balanced e demais esquemas serão preservados. Continuar?";
+        if (MessageBox.Show(this, warning, "Lynext — Confirmar plano de energia", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        ActivatePowerProfileButton.IsEnabled = false;
+        PowerManagerStateText.Text = "Configurando e verificando as configurações do plano...";
+        var result = await Task.Run(() => _powerManager.Activate(profileId));
+        PowerManagerStateText.Text = result.Message;
+        StatusText.Text = definition.Name + (result.Success ? " • ativo e verificado" : " • estado não confirmado");
+        FeedbackText.Text = result.Message;
+        RefreshPowerManagerView();
+        MessageBox.Show(this, result.Message, "Lynext — Gerenciador de Energia", MessageBoxButton.OK, result.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    private async void RestorePowerPlan_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this, "O Lynext voltará ao GUID do plano que estava ativo antes da ativação. Se o plano ativo tiver mudado desde então, a restauração será interrompida e o backup preservado. Os planos e configurações Lynext não serão apagados. Continuar?", "Lynext — Voltar ao plano anterior", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var result = await Task.Run(_powerManager.RestorePrevious);
+        PowerManagerStateText.Text = result.Message;
+        StatusText.Text = result.Success ? "Plano anterior restaurado e verificado" : "Restauração não confirmada";
+        RefreshPowerManagerView();
+        MessageBox.Show(this, result.Message, "Lynext — Restauração", MessageBoxButton.OK, result.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 
     private void OpenNativeSettings_Click(object sender, RoutedEventArgs e)
@@ -133,7 +206,7 @@ public partial class MainWindow : Window
         if (_selectedProfile != "Lite") return;
         LiteReportText.Text = report;
         LiteStatusText.Text = "Revisão concluída. Itens não foram ativados nem desativados.";
-        StatusText.Text = "Lite • revisão concluída (somente leitura)";
+        StatusText.Text = "Lynext Lite • revisão concluída (somente leitura)";
         FeedbackText.Text = "Diagnóstico Lite concluído somente para leitura.";
     }
 
@@ -145,7 +218,7 @@ public partial class MainWindow : Window
         if (_selectedProfile != "Empresarial") return;
         BusinessReportText.Text = report;
         BusinessStatusText.Text = "Triagem concluída; consulte estados desconhecidos e avisos com o administrador.";
-        StatusText.Text = "Empresarial • diagnóstico concluído (somente leitura)";
+        StatusText.Text = "Lynext Empresarial • diagnóstico concluído (somente leitura)";
         FeedbackText.Text = "Diagnóstico Empresarial local concluído. Nenhuma configuração foi modificada.";
     }
 
@@ -157,7 +230,7 @@ public partial class MainWindow : Window
         if (_selectedProfile != "Economia") return;
         EconomyReportText.Text = report;
         EconomyStatusText.Text = "Consulta concluída; plano ativo e definições não foram alterados.";
-        StatusText.Text = "Economia • consulta concluída (somente leitura)";
+        StatusText.Text = "Lynext Economia • consulta concluída (somente leitura)";
         FeedbackText.Text = "Diagnóstico de energia concluído somente para leitura.";
     }
 
@@ -241,9 +314,9 @@ public partial class MainWindow : Window
 
     private async Task ActivateProfileAsync(string profileName)
     {
-        if (ProfileTitle.Text != profileName)
+        if (_selectedProfile != profileName)
         {
-            MessageBox.Show($"Selecione o perfil {profileName} antes de ativá-lo.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show($"Selecione o perfil {ProfileTitle.Text} antes de ativá-lo.", "Lynext", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -255,7 +328,7 @@ public partial class MainWindow : Window
                 ? "Alteração incluída: habilitar e verificar o Modo de Jogo do usuário atual. Plano de energia e preferências de GPU não serão alterados."
                 : "Alteração incluída: habilitar e verificar o Modo de Jogo do usuário atual. Plano Alto desempenho é opcional, oferecido em uma confirmação separada somente quando compatível e sem bateria detectada.";
             var restoreChoice = MessageBox.Show(
-                $"Resumo de {profileName}:\n\n{changeSummary}\n\nAntes de aplicar, recomendamos tentar criar um ponto de restauração do Windows. O ponto pode ocupar espaço em disco e não garante a recuperação de todos os arquivos ou aplicativos. O Lynext também salva backups próprios dos ajustes que ele realmente modifica.\n\nDeseja tentar criar um ponto de restauração?",
+                $"Resumo de {ProfileTitle.Text}:\n\n{changeSummary}\n\nAntes de aplicar, recomendamos tentar criar um ponto de restauração do Windows. O ponto pode ocupar espaço em disco e não garante a recuperação de todos os arquivos ou aplicativos. O Lynext também salva backups próprios dos ajustes que ele realmente modifica.\n\nDeseja tentar criar um ponto de restauração?",
                 "Lynext — Proteção antes de otimizar",
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Warning);
@@ -300,8 +373,8 @@ public partial class MainWindow : Window
             if (profileName == "Gamer Ultra")
             {
                 var powerChoice = MessageBox.Show(
-                    "O Gamer Ultra pode tentar ativar o plano Alto desempenho se estiver instalado e o Lynext confirmar que não há bateria no sistema. Em notebooks ou se a detecção de bateria falhar, a energia não será alterada. Em desktops compatíveis, a troca pode aumentar consumo, temperatura e ruído e não garante FPS maior.\n\nDeseja incluir essa alteração?",
-                    "Lynext — Opção adicional do Gamer Ultra",
+                    "Lynext Ultra Performance pode tentar ativar o plano Alto desempenho se estiver instalado e o Lynext confirmar que não há bateria no sistema. Em notebooks ou se a detecção de bateria falhar, a energia não será alterada. Em desktops compatíveis, a troca pode aumentar consumo, temperatura e ruído e não garante FPS maior.\n\nDeseja incluir essa alteração?",
+                "Lynext — Opção adicional do Lynext Ultra Performance",
                     MessageBoxButton.YesNoCancel,
                     MessageBoxImage.Warning);
                 if (powerChoice == MessageBoxResult.Cancel)
@@ -316,7 +389,7 @@ public partial class MainWindow : Window
             FeedbackText.Text = result + " " + restorePointNote;
             MessageBox.Show(
                 result + "\n\n" + restorePointNote + "\n\nNenhum ganho de FPS é presumido: valide o resultado no jogo com medições repetíveis.",
-                "Lynext — " + profileName,
+                "Lynext — " + ProfileTitle.Text,
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -324,7 +397,7 @@ public partial class MainWindow : Window
         {
             FeedbackText.Text = "Não foi possível ativar o perfil: " + ex.Message;
             MessageBox.Show(
-                $"Não foi possível ativar {profileName}. O Lynext tentou reverter ajustes feitos durante esta tentativa quando foi seguro.\n\nDetalhes: {ex.Message}",
+                $"Não foi possível ativar {ProfileTitle.Text}. O Lynext tentou reverter ajustes feitos durante esta tentativa quando foi seguro.\n\nDetalhes: {ex.Message}",
                 "Lynext — Falha na ativação",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -406,24 +479,24 @@ public partial class MainWindow : Window
         if (_selectedProfile == "Gamer")
         {
             GamerStateText.Text = OptimizationService.GetProfileStatus("Gamer");
-            StatusText.Text = "Gamer • " + GamerStateText.Text;
+            StatusText.Text = "Lynext Gamer • " + GamerStateText.Text;
         }
         else if (_selectedProfile == "Gamer Ultra")
         {
             GamerUltraStateText.Text = OptimizationService.GetProfileStatus("Gamer Ultra");
-            StatusText.Text = "Gamer Ultra • " + GamerUltraStateText.Text;
+            StatusText.Text = "Lynext Ultra Performance • " + GamerUltraStateText.Text;
         }
         else if (_selectedProfile == "Lite")
         {
-            StatusText.Text = "Lite • revisão sob demanda; nenhuma alteração automatizada";
+            StatusText.Text = "Lynext Lite • revisão sob demanda; nenhuma alteração automatizada";
         }
         else if (_selectedProfile == "Empresarial")
         {
-            StatusText.Text = "Empresarial • diagnóstico local não executado";
+            StatusText.Text = "Lynext Empresarial • diagnóstico local não executado";
         }
         else if (_selectedProfile == "Economia")
         {
-            StatusText.Text = "Economia • consulta de energia não executada";
+            StatusText.Text = "Lynext Economia • consulta de energia não executada";
         }
         else
         {
@@ -798,4 +871,5 @@ public partial class MainWindow : Window
             MessageBoxImage.Information);
     }
 }
+
 

@@ -60,12 +60,12 @@
             <Border Grid.Column="0" Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="16" Margin="0,0,16,0">
                 <StackPanel>
                     <TextBlock Text="PERFIS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,12"/>
-                    <Button Content="Gamer Ultra" Tag="Gamer Ultra" Click="Profile_Click"/>
-                    <Button Content="Gamer" Tag="Gamer" Click="Profile_Click"/>
-                    <Button Content="Lite" Tag="Lite" Click="Profile_Click"/>
-                    <Button Content="Empresarial" Tag="Empresarial" Click="Profile_Click"/>
-                    <Button Content="Economia" Tag="Economia" Click="Profile_Click"/>
-                    <TextBlock Text="Gamer ativa o Modo de Jogo com reversão própria. Gamer Ultra adiciona uma opção explícita de plano Alto desempenho, se disponível. Lite, Empresarial e Economia oferecem revisão e diagnóstico cautelosos." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
+                    <Button Content="Lynext Ultra Performance" Tag="Gamer Ultra" Click="Profile_Click"/>
+                    <Button Content="Lynext Gamer" Tag="Gamer" Click="Profile_Click"/>
+                    <Button Content="Lynext Lite" Tag="Lite" Click="Profile_Click"/>
+                    <Button Content="Lynext Empresarial" Tag="Empresarial" Click="Profile_Click"/>
+                    <Button Content="Lynext Economia" Tag="Economia" Click="Profile_Click"/>
+                    <TextBlock Text="Selecione um perfil para consultar o plano correspondente. A seleção não altera o Windows; somente o botão de ativação aplica o plano Lynext." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
                 </StackPanel>
             </Border>
 
@@ -74,8 +74,21 @@
                     <StackPanel>
                         <TextBlock x:Name="ProfileTitle" Text="Bem-vindo ao Lynext" FontSize="24" FontWeight="Bold"/>
                         <TextBlock x:Name="ProfileDescription" Text="Selecione um perfil para ver sua finalidade. A navegação não modifica o Windows." Foreground="{StaticResource MutedBrush}" FontSize="14" Margin="0,8,0,20" TextWrapping="Wrap"/>
+                        <Border x:Name="PowerManagerPanel" Background="#12161C" BorderBrush="#303A49" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,16" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="GERENCIADOR DE ENERGIA" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
+                                <TextBlock x:Name="PowerManagerStateText" Text="Estado dos planos não consultado." TextWrapping="Wrap" Margin="0,7,0,8"/>
+                                <TextBlock x:Name="PowerManagerValuesText" Text="Tela: — • Suspensão: — • Disco: — • CPU: —" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                                <TextBlock Text="O temporizador de disco em Nunca pode aumentar o consumo em notebooks com HDD. A CPU em 100% mínimo pode elevar consumo, temperatura e ruído na tomada e na bateria; isso não é overclock nem garante FPS." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,8"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="ActivatePowerProfileButton" Content="Configurar e ativar este plano" Click="ActivatePowerProfile_Click" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
+                                    <Button Content="Consultar novamente" Click="RefreshPowerManager_Click"/>
+                                    <Button x:Name="RestorePowerPlanButton" Content="Voltar ao plano anterior" Click="RestorePowerPlan_Click" IsEnabled="False"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                         <StackPanel x:Name="WelcomeProfilePanel">
-                            <TextBlock Text="Escolha Gamer ou Gamer Ultra para consultar as opções disponíveis. Os perfis Lite, Empresarial e Economia ainda estão em planejamento." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                            <TextBlock Text="Selecione um dos cinco perfis para consultar seu plano real de energia. A seleção não altera o plano ativo." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                         </StackPanel>
                         <StackPanel x:Name="GamerProfilePanel" Visibility="Collapsed">
                             <TextBlock Text="GAMER • PERFIL EQUILIBRADO" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
@@ -100,7 +113,7 @@
                             <TextBlock Text="Plano Alto desempenho • opcional" FontSize="17" FontWeight="SemiBold" Margin="0,14,0,0"/>
                             <TextBlock Text="Só é oferecido na ativação se o Windows listar o plano e a consulta confirmar que não há bateria. Pode aumentar consumo, calor e ruído; não há ganho de FPS garantido. O plano original é restaurado somente se o estado ainda corresponder ao aplicado pelo Lynext." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
                             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                <Button x:Name="ActivateGamerUltraButton" Content="Ativar Gamer Ultra" Click="ActivateGamerUltra_Click" IsEnabled="False" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
+                                <Button x:Name="ActivateGamerUltraButton" Content="Aplicar opções adicionais" Click="ActivateGamerUltra_Click" IsEnabled="False" Background="{StaticResource AccentBrush}" Foreground="#101318" FontWeight="Bold"/>
                                 <Button x:Name="RestoreUltraDefaultsButton" Content="Voltar ao padrão" Click="RestoreDefaults_Click" IsEnabled="False"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
@@ -188,4 +201,5 @@
         <TextBlock Grid.Row="3" Text="Lynext • Transparência primeiro: nenhuma alteração é aplicada sem confirmação." Foreground="{StaticResource MutedBrush}" Margin="2,16,0,0"/>
     </Grid>
 </Window>
+
 
