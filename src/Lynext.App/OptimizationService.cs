@@ -44,9 +44,14 @@ public static class OptimizationService
     {
         get
         {
-            try { return File.Exists(BackupPath) || File.Exists(PowerBackupPath) || File.Exists(ActiveProfilePath); }
+            try { return File.Exists(BackupPath) || File.Exists(PowerBackupPath); }
             catch { return false; }
         }
+    }
+
+    public static bool HasPendingPowerPlanRestore
+    {
+        get { try { return File.Exists(PowerBackupPath); } catch { return false; } }
     }
 
     public static string? ActiveProfileName
@@ -74,18 +79,11 @@ public static class OptimizationService
             var gameMode = ReadDword(GameModeValues[0]);
             var activeProfile = LoadProfileState();
             if (activeProfile is not null)
-            {
-                if (gameMode != 1)
-                    return $"O perfil {activeProfile.ProfileName} está registrado, mas o Modo de Jogo não está confirmado como ativo. Revise o estado antes de aplicar novamente.";
-                var powerText = activeProfile.HighPerformancePlanApplied
-                    ? " O plano Alto desempenho também foi solicitado e verificado."
-                    : " Nenhuma alteração no plano de energia é atribuída a este perfil.";
-                return $"Perfil {activeProfile.ProfileName} ativo. O Modo de Jogo está habilitado.{powerText} O backup e o histórico permanecem salvos.";
-            }
+                return $"Último perfil registrado: {activeProfile.ProfileName}. Estado atual: {GetProfileStatus(activeProfile.ProfileName)}.";
             if (File.Exists(PowerBackupPath))
                 return "Há um backup de energia do Lynext aguardando restauração ou reconciliação. O aplicativo não deve sobrescrever uma mudança externa sem detectar o conflito.";
             if (File.Exists(BackupPath) && gameMode == 1)
-                return "Existe um backup legado do Gamer Ultra e o Modo de Jogo está habilitado. A reversão continua disponível.";
+                return "Existe um backup de uma configuração gerenciada anteriormente; Modo de Jogo está habilitado no Windows, mas não há perfil ativo confirmado.";
             if (gameMode == 1)
                 return "O Modo de Jogo já está habilitado no Windows; ainda não há um perfil gerenciado ativo pelo Lynext.";
             return "Nenhum perfil Gamer está ativo pelo Lynext. A análise não modifica configurações.";
@@ -93,6 +91,69 @@ public static class OptimizationService
         catch (Exception ex)
         {
             return "Não foi possível ler o estado dos perfis: " + ex.Message;
+        }
+    }
+
+    /// <summary>Reports the selected profile against live Windows state and Lynext's recorded ownership separately.</summary>
+    public static string GetProfileStatus(string profileName)
+    {
+        if (profileName is not ("Gamer" or "Gamer Ultra"))
+            return "Sem operações implementadas";
+
+        try
+        {
+            var mode = ReadDword(GameModeValues[0]);
+            var state = LoadProfileState();
+            var registeredForThisProfile = string.Equals(state?.ProfileName, profileName, StringComparison.Ordinal);
+            var modeText = mode switch
+            {
+                1 => "Modo de Jogo habilitado no Windows",
+                0 => "Modo de Jogo desabilitado no Windows",
+                null => "Estado do Modo de Jogo não confirmado",
+                _ => "Valor do Modo de Jogo desconhecido"
+            };
+
+            if (mode is null || mode is not (0 or 1))
+                return profileName == "Gamer" && HasPendingPowerPlanRestore
+                    ? modeText + "; um ajuste de energia do Gamer Ultra ainda aguarda restauração explícita"
+                    : modeText;
+
+            if (mode == 0)
+                return registeredForThisProfile
+                    ? "Aplicação parcial: configuração registrada, mas Modo de Jogo está desabilitado no Windows"
+                    : profileName == "Gamer" && HasPendingPowerPlanRestore
+                        ? modeText + "; um ajuste de energia do Gamer Ultra ainda aguarda restauração explícita"
+                        : modeText;
+
+            var gameModeOwnedByProfile = registeredForThisProfile && state?.GameModeWasAlreadyEnabled == false;
+            var ownership = gameModeOwnedByProfile
+                ? "confirmado como aplicado pelo Lynext"
+                : registeredForThisProfile
+                    ? "Modo de Jogo já estava ativo antes do Lynext; o perfil não alterou esse valor"
+                : "ativo no Windows, mas não confirmado como aplicado por este perfil Lynext";
+
+            if (profileName == "Gamer Ultra" && registeredForThisProfile && state!.HighPerformancePlanApplied)
+            {
+                try
+                {
+                    if (!string.Equals(GetActivePowerSchemeGuid(), HighPerformanceSchemeGuid, StringComparison.OrdinalIgnoreCase))
+                        return "Aplicação parcial: Modo de Jogo habilitado, mas o plano de energia foi alterado externamente";
+                    ownership += "; plano Alto desempenho também verificado";
+                }
+                catch
+                {
+                    return "Estado não confirmado: Modo de Jogo habilitado, não foi possível consultar o plano de energia";
+                }
+            }
+
+            var pendingUltra = profileName == "Gamer" && HasPendingPowerPlanRestore
+                ? "; um ajuste de energia do Gamer Ultra ainda aguarda restauração explícita"
+                : string.Empty;
+            return $"{modeText}; {ownership}{pendingUltra}";
+        }
+        catch (Exception ex)
+        {
+            return "Estado não confirmado: " + ex.Message;
         }
     }
 
@@ -116,17 +177,29 @@ public static class OptimizationService
 
     private static string ApplyProfile(string profileName, bool useHighPerformancePowerPlan)
     {
+        if (OptimizationProfileCatalog.FindByName(profileName) is not { IsImplemented: true } profile)
+            throw new InvalidOperationException("O perfil selecionado ainda não possui operações implementadas.");
+
         var plannedChanges = new List<OptimizationChange>
         {
             new("gamer.game-mode", OptimizationTargetKind.RegistryValue, @"HKCU\Software\Microsoft\GameBar\AutoGameModeEnabled")
         };
         if (profileName == "Gamer Ultra" && useHighPerformancePowerPlan)
             plannedChanges.Add(new("gamer-ultra.power-plan", OptimizationTargetKind.PowerPlan, "active-power-scheme"));
+        if (plannedChanges.Any(change => !OptimizationProfileCatalog.AllowsOptimization(profile.Name, change.OptimizationId)))
+            throw new InvalidOperationException("A operação solicitada não pertence ao conjunto autorizado deste perfil.");
         var authorization = OptimizationAuthorizationPolicy.Authorize(plannedChanges);
         if (!authorization.Allowed)
         {
             WriteHistoryRequired("Recusa de política: " + profileName, false, authorization.Reason);
             throw new InvalidOperationException("O otimizador recusou a operação pela política de proteção. " + authorization.Reason);
+        }
+
+        if (profileName == "Gamer" && HasPendingPowerPlanRestore)
+        {
+            WriteHistoryRequired("Ativação Gamer bloqueada", false,
+                "Há uma alteração de energia gerenciada anteriormente pelo Gamer Ultra. Restaure-a explicitamente antes de aplicar o perfil Gamer.");
+            throw new InvalidOperationException("Há um plano de energia ainda gerenciado pelo Gamer Ultra. Use Voltar ao padrão nessa tela antes de ativar Gamer; o perfil Gamer não altera nem incorpora opções Ultra.");
         }
 
         Directory.CreateDirectory(ProfileDirectory);
@@ -156,7 +229,9 @@ public static class OptimizationService
                     throw new InvalidOperationException("O Modo de Jogo foi gravado, mas a leitura posterior não confirmou o valor esperado.");
             }
 
-            var powerNote = ReconcilePowerPlan(useHighPerformancePowerPlan);
+            var powerNote = profileName == "Gamer Ultra"
+                ? ReconcilePowerPlan(useHighPerformancePowerPlan)
+                : "O perfil Gamer não modifica o plano de energia.";
             var profileState = new ActiveProfileState(
                 profileName,
                 DateTimeOffset.Now,
@@ -731,3 +806,4 @@ public static class OptimizationService
         catch { }
     }
 }
+

@@ -1,6 +1,14 @@
 # Perfis Gamer e Gamer Ultra — estado da implementação
 
-**Estado:** primeira etapa implementada na branch `rebuild/desktop-installer`. O workflow atual valida restauração de dependências, compilação Release, publicação e geração do instalador. Ainda não existe uma suíte automatizada de testes de unidade nem foi feita validação funcional em um PC físico nesta tarefa.
+**Estado:** perfis isolados na branch `rebuild/desktop-installer`. Os controles existentes continuam limitados a Game Mode e à opção condicional de plano Alto desempenho. Nenhuma alteração automática em processos, serviços, inicialização ou GPU foi adicionada.
+
+## Separação de perfis e estado apresentado
+
+- A seleção de perfil muda somente a view. O catálogo declara os IDs permitidos por perfil; Lite, Empresarial e Economia não têm operações e mostram apenas o aviso de planejamento.
+- Gamer e Gamer Ultra têm painéis e botões de ativação distintos. Game Mode é consultado no Windows. A interface diferencia o valor ativo no Windows da aplicação registrada pelo Lynext.
+- Quando a leitura falha ou o conteúdo não é um DWORD 0/1 válido, o estado aparece como não confirmado/desconhecido. Gamer Ultra também reconsulta o plano de energia se o Lynext registrou que o aplicou.
+- Se houver um plano Ultra ainda gerenciado, a ativação de Gamer falha com instrução para restaurá-lo primeiro. Assim Gamer não altera nem incorpora silenciosamente o ajuste Ultra.
+- Os links de gráficos e inicialização abrem as configurações nativas para revisão manual; não gravam preferências gráficas nem alteram entradas de inicialização.
 
 ## O que está implementado
 
@@ -41,6 +49,7 @@ A troca automática para o plano Alto desempenho só é tentada quando a consult
 - O plano Alto desempenho pode não estar instalado ou pode não ser aplicável à política de energia do computador.
 - O perfil de energia só troca o plano ativo; não edita cada opção individual de energia.
 - Os botões de configurações gráficas e aplicativos de inicialização abrem as páginas nativas do Windows. O Lynext não gerencia as entradas de inicialização automaticamente.
+- Os testes cobrem o isolamento declarativo e a navegação pura do catálogo; ainda não substituem testes de aplicação/restauração com interfaces simuladas ou validação em hardware Windows real.
 - Não há ainda benchmark automatizado ou alegação medida de melhoria de FPS, 1% lows, frametime ou latência.
 - Lite, Empresarial e Economia ainda não têm aplicação de ajustes nesta fase.
 - Compilação não equivale a teste funcional no hardware real. Verifique a execução em um ambiente Windows de teste antes de distribuir a versão.
@@ -51,11 +60,12 @@ A troca automática para o plano Alto desempenho só é tentada quando a consult
 2. Registre o plano de energia ativo e o estado inicial do Modo de Jogo.
 3. Ative Gamer e confirme a leitura posterior e o backup.
 4. Se o plano Alto desempenho existir, teste Gamer Ultra optando por não o ativar e depois aceitando a opção.
-5. Ative Gamer após Ultra e confirme que o plano original é restaurado se o estado ainda corresponder ao que o Lynext gerencia.
+5. Ative Gamer após Ultra com um plano gerenciado pendente e confirme que o Lynext bloqueia a operação; selecione Gamer Ultra e restaure explicitamente antes de tentar Gamer.
 6. Use Voltar ao padrão e confirme que as configurações retornaram aos valores originais.
 7. Altere manualmente o plano de energia depois de aplicar Ultra e confirme que o Lynext detecta o conflito e não o sobrescreve silenciosamente.
 8. Revise o histórico e confirme que falhas e reversões parciais não são registradas como sucesso.
 
 ## Próxima etapa recomendada
 
-Adicionar testes automatizados com dependências de sistema simuladas, abstraindo Registro e `powercfg`; depois, ampliar diagnóstico de energia/hardware e criar uma experiência de análise/previsão antes de pensar em benchmarks integrados ou novas otimizações.
+Ampliar a suíte com abstrações simuláveis de Registro e `powercfg`, validar os fluxos em uma VM Windows e considerar outras opções somente após comprovar compatibilidade, reversão e benefício mensurável.
+

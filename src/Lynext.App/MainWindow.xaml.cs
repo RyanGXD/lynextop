@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private bool _isCheckingUpdates;
     private bool _isUpdating;
     private CancellationTokenSource? _updateCancellation;
+    private string? _selectedProfile;
 
     public MainWindow()
     {
@@ -21,13 +22,6 @@ public partial class MainWindow : Window
         {
             LoadOptionalBrandImage();
             RefreshHardware();
-            if (OptimizationService.ActiveProfileName is "Gamer" or "Gamer Ultra")
-            {
-                ProfileTitle.Text = OptimizationService.ActiveProfileName;
-                ProfileDescription.Text = OptimizationService.ActiveProfileName == "Gamer Ultra"
-                    ? "Perfil competitivo ampliado restaurado da sessão anterior. Revise o estado atual das configurações antes de continuar."
-                    : "Perfil competitivo equilibrado restaurado da sessão anterior. O estado é lido novamente ao abrir o aplicativo.";
-            }
             UpdateOptimizationUiState();
             // Check quietly at startup; only notify the user when a newer stable release exists.
             await CheckForUpdatesAsync(showWhenUnavailable: false, automatic: true);
@@ -83,24 +77,25 @@ public partial class MainWindow : Window
         if (sender is not Button { Tag: string profile })
             return;
 
-        ProfileTitle.Text = profile;
-        ProfileDescription.Text = profile switch
-        {
-            "Gamer Ultra" => "Foco competitivo ampliado: Modo de Jogo e opção explícita de plano Alto desempenho, se instalado. A energia pode aumentar consumo, temperatura e ruído; não há promessa de ganho de FPS.",
-            "Gamer" => "Perfil competitivo equilibrado: habilita o Modo de Jogo do Windows quando necessário, mantém energia inalterada e oferece atalhos para revisar gráficos e inicialização.",
-            "Lite" => "Reduzir excessos sem comprometer recursos úteis, segurança ou estabilidade do Windows. Este perfil ainda está em planejamento.",
-            "Empresarial" => "Ajustes conservadores, preservando impressoras, rede, políticas e confiabilidade. Este perfil ainda está em planejamento.",
-            "Economia" => "Reduzir consumo, calor e gasto de bateria, respeitando os limites do equipamento. Este perfil ainda está em planejamento.",
-            _ => "Selecione um perfil para preparar a análise."
-        };
+        var definition = OptimizationProfileCatalog.FindByName(profile);
+        if (definition is null)
+            return;
 
-        ActivateGamerButton.IsEnabled = profile == "Gamer";
-        ActivateGamerUltraButton.IsEnabled = profile == "Gamer Ultra";
-        RestoreDefaultsButton.IsEnabled = OptimizationService.CanRestoreDefaults;
-        StatusText.Text = OptimizationService.IsGamerUltraApplied
-            ? "Gamer Ultra ativo"
-            : (OptimizationService.IsGamerApplied ? "Gamer ativo" : (profile is "Gamer" or "Gamer Ultra" ? profile + " pronto" : "Nenhum perfil Gamer ativo"));
-        FeedbackText.Text = $"Perfil selecionado: {profile}. {OptimizationService.GetStatusSummary()}";
+        _selectedProfile = definition.Name;
+        ProfileTitle.Text = definition.Name;
+        ProfileDescription.Text = definition.Description;
+        var screens = OptimizationProfileCatalog.GetVisiblePanels(definition.Name);
+        WelcomeProfilePanel.Visibility = Visibility.Collapsed;
+        GamerProfilePanel.Visibility = screens.Contains("gamer") ? Visibility.Visible : Visibility.Collapsed;
+        GamerUltraProfilePanel.Visibility = screens.Contains("gamer-ultra") ? Visibility.Visible : Visibility.Collapsed;
+        LiteProfilePanel.Visibility = screens.Contains("lite") ? Visibility.Visible : Visibility.Collapsed;
+        BusinessProfilePanel.Visibility = screens.Contains("business") ? Visibility.Visible : Visibility.Collapsed;
+        EconomyProfilePanel.Visibility = screens.Contains("economy") ? Visibility.Visible : Visibility.Collapsed;
+        GamingToolsPanel.Visibility = definition.IsImplemented ? Visibility.Visible : Visibility.Collapsed;
+        UpdateOptimizationUiState();
+        FeedbackText.Text = definition.IsImplemented
+            ? $"Perfil selecionado: {definition.Name}. A seleção não aplica configurações."
+            : $"{definition.Name} está em planejamento e não possui operações disponíveis.";
     }
 
     private void PrepareAnalysis_Click(object sender, RoutedEventArgs e)
@@ -172,8 +167,11 @@ public partial class MainWindow : Window
         ActivateGamerUltraButton.IsEnabled = false;
         try
         {
+            var changeSummary = profileName == "Gamer"
+                ? "Alteração incluída: habilitar e verificar o Modo de Jogo do usuário atual. Plano de energia e preferências de GPU não serão alterados."
+                : "Alteração incluída: habilitar e verificar o Modo de Jogo do usuário atual. Plano Alto desempenho é opcional, oferecido em uma confirmação separada somente quando compatível e sem bateria detectada.";
             var restoreChoice = MessageBox.Show(
-                $"Antes de ativar {profileName}, recomendamos tentar criar um ponto de restauração do Windows. O ponto pode ocupar espaço em disco e não garante a recuperação de todos os arquivos ou aplicativos. O Lynext também salva backups próprios dos ajustes que ele realmente modifica.\n\nDeseja tentar criar um ponto de restauração?",
+                $"Resumo de {profileName}:\n\n{changeSummary}\n\nAntes de aplicar, recomendamos tentar criar um ponto de restauração do Windows. O ponto pode ocupar espaço em disco e não garante a recuperação de todos os arquivos ou aplicativos. O Lynext também salva backups próprios dos ajustes que ele realmente modifica.\n\nDeseja tentar criar um ponto de restauração?",
                 "Lynext — Proteção antes de otimizar",
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Warning);
@@ -315,17 +313,26 @@ public partial class MainWindow : Window
 
     private void UpdateOptimizationUiState()
     {
-        RestoreDefaultsButton.IsEnabled = OptimizationService.CanRestoreDefaults;
-        ActivateGamerButton.IsEnabled = ProfileTitle.Text == "Gamer";
-        ActivateGamerUltraButton.IsEnabled = ProfileTitle.Text == "Gamer Ultra";
-        if (OptimizationService.IsGamerUltraApplied)
-            StatusText.Text = "Gamer Ultra ativo";
-        else if (OptimizationService.IsGamerApplied)
-            StatusText.Text = "Gamer ativo";
-        else if (ProfileTitle.Text is "Gamer" or "Gamer Ultra")
-            StatusText.Text = ProfileTitle.Text + " pronto";
+        ActivateGamerButton.IsEnabled = _selectedProfile == "Gamer";
+        ActivateGamerUltraButton.IsEnabled = _selectedProfile == "Gamer Ultra";
+        RestoreDefaultsButton.IsEnabled = _selectedProfile == "Gamer" && OptimizationService.CanRestoreDefaults
+            && !OptimizationService.HasPendingPowerPlanRestore;
+        RestoreUltraDefaultsButton.IsEnabled = _selectedProfile == "Gamer Ultra" && OptimizationService.CanRestoreDefaults;
+
+        if (_selectedProfile == "Gamer")
+        {
+            GamerStateText.Text = OptimizationService.GetProfileStatus("Gamer");
+            StatusText.Text = "Gamer • " + GamerStateText.Text;
+        }
+        else if (_selectedProfile == "Gamer Ultra")
+        {
+            GamerUltraStateText.Text = OptimizationService.GetProfileStatus("Gamer Ultra");
+            StatusText.Text = "Gamer Ultra • " + GamerUltraStateText.Text;
+        }
         else
-            StatusText.Text = "Nenhum perfil Gamer ativo";
+        {
+            StatusText.Text = OptimizationService.GetStatusSummary();
+        }
     }
 
     private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
@@ -570,3 +577,4 @@ public partial class MainWindow : Window
             MessageBoxImage.Information);
     }
 }
+
