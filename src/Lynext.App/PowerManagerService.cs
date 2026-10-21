@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using System.IO;
 
 namespace Lynext;
 
@@ -61,7 +62,7 @@ public sealed record PowerProfilePlan(string Id, string Name, string Description
 public sealed record PowerManagerSnapshot(string? ActiveGuid, string? ActiveName, IReadOnlyList<PowerProfilePlan> Profiles, string? Error = null);
 public sealed record PowerManagerOperation(bool Success, string Message, PowerManagerSnapshot? Snapshot = null);
 public sealed record PowerProfileSettingTarget(string Key, string SubgroupGuid, string SettingGuid, uint Ac, uint Dc);
-public sealed record PowerSettingValues(uint Ac, uint Dc);
+public readonly record struct PowerSettingValues(uint Ac, uint Dc);
 
 /// <summary>Creates and manages only schemes recorded in the Lynext ownership manifest.</summary>
 public sealed class PowerManagerService
@@ -79,6 +80,7 @@ public sealed class PowerManagerService
     private readonly IPowerCommandRunner _runner;
     private readonly IPowerSchemeDescriptionReader _descriptionReader;
     private readonly IPowerPolicyDetector _policyDetector;
+    private sealed record SchemeInfo(string Guid, string Name, string Description);
     private static readonly (string Id, string Name, string Description, bool CpuMax)[] Definitions =
     [
         ("gamer-ultra", "Lynext Ultra Performance", "Desempenho de CPU máximo; mínimo e máximo em 100% em AC e DC.", true),
@@ -142,7 +144,7 @@ public sealed class PowerManagerService
         if (list.ExitCode != 0 || active.ExitCode != 0) return new(null, null, [], list.Error + active.Error);
         var schemes = ParseSchemes(list.Output);
         for (var index = 0; index < schemes.Count; index++)
-            schemes[index] = (schemes[index].Guid, schemes[index].Name, _descriptionReader.ReadDescription(schemes[index].Guid));
+            schemes[index] = schemes[index] with { Description = _descriptionReader.ReadDescription(schemes[index].Guid) };
         var activeGuid = ParseGuid(active.Output);
         var manifest = ReadManifest();
         var entries = Definitions.Select(def =>
@@ -323,12 +325,12 @@ public sealed class PowerManagerService
     }
     private static string Marker(string id) => $"Lynext.PowerManager.Schema=1;Profile={id}";
     private static string? ParseGuid(string text) => Regex.Match(text, @"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").Success ? Regex.Match(text, @"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").Value.ToLowerInvariant() : null;
-    private static List<(string Guid, string Name, string Description)> ParseSchemes(string text) => Regex.Matches(text, @"(?im)^\s*[^\r\n]*?\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b\s*\((.*?)\)(?:\s+\*)?\s*$").Cast<Match>().Select(m => (m.Groups[1].Value.ToLowerInvariant(), m.Groups[2].Value.Trim(), string.Empty)).ToList();
+    private static List<SchemeInfo> ParseSchemes(string text) => Regex.Matches(text, @"(?im)^\s*[^\r\n]*?\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b\s*\((.*?)\)(?:\s+\*)?\s*$").Cast<Match>().Select(m => new SchemeInfo(m.Groups[1].Value.ToLowerInvariant(), m.Groups[2].Value.Trim(), string.Empty)).ToList();
     private Manifest ReadManifest() => ReadJson<Manifest>(ManifestPath) ?? new Manifest();
     private void SaveManifest(Manifest value) => WriteJson(ManifestPath, value);
     private static T? ReadJson<T>(string path) => File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), JsonOptions) : default;
     private static void WriteJson<T>(string path, T value) { Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions)); }
-    private static void WriteHistory(string action, bool success, string details)
+    private void WriteHistory(string action, bool success, string details)
     {
         Directory.CreateDirectory(Root);
         File.AppendAllText(HistoryPath, JsonSerializer.Serialize(new { timestamp = DateTimeOffset.UtcNow, action, success, details }) + Environment.NewLine);
