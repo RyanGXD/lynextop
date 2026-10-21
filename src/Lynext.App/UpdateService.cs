@@ -41,8 +41,12 @@ public static class UpdateService
     private const long MaxInstallerBytes = 1_000_000_000;
     private const int MaxChecksumBytes = 8 * 1024;
     private const int MaxRedirects = 5;
-    private static readonly string CurrentVersion =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
+    private static readonly string InformationalVersion =
+        Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) + "-preview");
+    public static LynextReleaseVersion InstalledReleaseVersion =>
+        LynextReleaseVersion.TryParse(InformationalVersion, out var parsed) ? parsed : new LynextReleaseVersion(new Version(0, 1, 0), true);
+    private static readonly string CurrentVersion = InstalledReleaseVersion.Numeric.ToString(3);
 
     private static readonly HttpClient ApiClient = CreateApiClient();
     private static readonly HttpClient DownloadClient = CreateDownloadClient();
@@ -67,10 +71,18 @@ public static class UpdateService
     public static Version InstalledVersion =>
         Version.TryParse(CurrentVersion, out var version) ? version : new Version(0, 1, 0);
 
-    public static async Task<UpdateInfo?> CheckLatestAsync(CancellationToken cancellationToken = default)
+    public static string InstalledDisplayVersion => InstalledReleaseVersion.ToString();
+
+    public static Task<UpdateInfo?> CheckLatestAsync(CancellationToken cancellationToken = default) =>
+        CheckLatestAsync(ApiClient, InstalledReleaseVersion, cancellationToken);
+
+    public static async Task<UpdateInfo?> CheckLatestAsync(
+        HttpClient apiClient,
+        LynextReleaseVersion installedVersion,
+        CancellationToken cancellationToken = default)
     {
         var endpoint = new Uri($"https://api.github.com/repos/{Owner}/{Repository}/releases/latest");
-        using var response = await ApiClient.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await apiClient.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
@@ -93,7 +105,7 @@ public static class UpdateService
         if (!UpdateValidation.TryParseVersionTag(tag, out var latestVersion))
             throw new InvalidDataException("A última Release do GitHub tem uma tag de versão inválida.");
 
-        if (!UpdateValidation.IsNewerVersion(latestVersion, InstalledVersion))
+        if (!UpdateValidation.IsNewerVersion(latestVersion, installedVersion))
             return null;
 
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)

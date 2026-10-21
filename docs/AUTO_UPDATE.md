@@ -2,9 +2,11 @@
 
 ## Fluxo
 
-O aplicativo consulta a endpoint pública de Releases estáveis do repositório RyanGXD/lynextop. Versões pré-lançamento, tags malformadas e versões iguais ou anteriores à instalada não são oferecidas pelo canal estável.
+Ao iniciar, o Lynext consulta a API em segundo plano se a última tentativa tiver sido há pelo menos seis horas. Enquanto aberto, verifica a cada 15 minutos se esse intervalo mínimo venceu. A data da tentativa é persistida; falhas de rede e rate limit são registradas como falha, nunca como confirmação de que está atualizado. O botão manual ignora o intervalo. A API `/releases/latest` é usada para o canal estável; pré-lançamentos não são instalados.
 
-Quando uma versão mais recente existe, o Lynext exibe versão, notas, data e tamanho quando disponíveis. A ação Atualizar agora baixa o instalador e valida tamanho e SHA-256 antes de iniciar qualquer executável.
+Com “Atualizar automaticamente” desativado (padrão), a detecção automática apenas informa a nova versão e preserva a ação manual. Com a opção ativada, a versão estável é baixada automaticamente, exibindo progresso, e validada antes de ficar pronta para instalação. O app apresenta uma escolha para instalar agora, adiar ou cancelar antes de fechar; não fecha sem confirmação. A opção e a última consulta/versão baixada ficam em `%LOCALAPPDATA%\\Lynext\\Updates\\preferences.json`. A preferência pode ser desligada na interface a qualquer momento. Downloads incompletos ficam em arquivo temporário e são removidos; a próxima tentativa começa do zero. O helper é verificado antes de baixar e uma instalação antiga sem `Lynext.Updater.exe` recebe a orientação para instalar manualmente uma versão compatível uma única vez.
+
+Builds da branch usam versão informacional `x.y.z-preview`; uma Release estável `x.y.z` é posterior à prévia equivalente. O instalador mantém nome/versão numéricos publicados. Versões iguais ou inferiores nunca são aplicadas.
 
 ## Integridade e redirecionamentos
 
@@ -32,7 +34,7 @@ O script scripts/build-installer.ps1 publica o aplicativo e o auxiliar, compila 
 
 ## Testes e limitações atuais
 
-A suíte tests/Lynext.UpdateTests cobre validação de tags, versões, nomes de assets, política HTTPS/hosts, digests e arquivos de checksum. Os testes de unidade não instalam um executável real nem alteram configurações do Windows.
+A suíte tests/Lynext.UpdateTests cobre validação de tags, versões, nomes de assets, política HTTPS/hosts, digests e arquivos de checksum, ordenação preview/estável, intervalo mínimo e persistência em diretório temporário. Os testes de unidade não instalam um executável real nem alteram configurações do Windows. Ainda não há uma abstração HTTP com handlers simulados cobrindo API, limite GitHub, cancelamento do instalador, UAC ou falhas de processo; esses casos continuam para validação em CI/VM.
 
 Build/CI confirma compilação e empacotamento; não equivale a uma atualização funcional testada em um computador com instalação antiga, nem valida assinatura digital. O primeiro update real deve ser testado em VM ou máquina de teste e com uma Release de staging antes de anunciar o recurso como pronto para todos os usuários.
 

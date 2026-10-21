@@ -145,6 +145,57 @@ public sealed class UpdateValidationTests
     public void ComparesVersionsWithoutDowngrading(string candidate, string installed, bool expected) =>
         Assert.Equal(expected, UpdateValidation.IsNewerVersion(Version.Parse(candidate), Version.Parse(installed)));
 
+    [Theory]
+    [InlineData("0.1.0", "0.1.0-preview", true)]
+    [InlineData("0.1.0", "0.1.0", false)]
+    [InlineData("0.1.0", "0.1.1-preview", false)]
+    [InlineData("0.1.1", "0.1.0-preview", true)]
+    public void StableChannelOrdersPreviewAndStableVersions(string candidate, string installed, bool expected)
+    {
+        Assert.True(LynextReleaseVersion.TryParse(installed, out var installedVersion));
+        Assert.Equal(expected, UpdateValidation.IsNewerVersion(Version.Parse(candidate), installedVersion));
+    }
+
+    [Theory]
+    [InlineData("0.1.0-preview", true)]
+    [InlineData("0.1.0-preview.abc123", true)]
+    [InlineData("0.1.0", false)]
+    [InlineData("v0.1.0-preview", false)]
+    [InlineData("preview", false)]
+    public void ParsesBuildChannelMetadata(string value, bool expected)
+    {
+        Assert.Equal(expected, LynextReleaseVersion.TryParse(value, out var version));
+        if (expected) Assert.Equal(value.Contains("preview", StringComparison.OrdinalIgnoreCase), version.IsPreview);
+    }
+
+    [Fact]
+    public void AutomaticCheckUsesSixHourMinimumInterval()
+    {
+        var now = DateTimeOffset.Parse("2026-10-21T12:00:00Z");
+        Assert.True(UpdatePreferences.Default.IsCheckDue(now));
+        var recent = new UpdatePreferences(true, now.AddHours(-5).AddMinutes(-59), null);
+        Assert.False(recent.IsCheckDue(now));
+        var due = new UpdatePreferences(true, now.AddHours(-6), null);
+        Assert.True(due.IsCheckDue(now));
+    }
+
+    [Fact]
+    public void PreferencesPersistWithoutTouchingUserSettings()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "lynext-update-tests", Guid.NewGuid().ToString("N"), "prefs.json");
+        try
+        {
+            var expected = new UpdatePreferences(true, DateTimeOffset.UtcNow, "1.2.3");
+            expected.Save(path);
+            Assert.Equal(expected, UpdatePreferences.Load(path));
+        }
+        finally
+        {
+            var directory = Path.GetDirectoryName(path)!;
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void ValidatesManifestHashes()
     {

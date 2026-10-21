@@ -41,4 +41,18 @@ Name: "{group}\Lynext"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\Lynext"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Abrir Lynext"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Abrir Lynext"; Flags: postinstall nowait skipifsilent; Check: not IsLynextUpdate
+
+[Code]
+function IsLynextUpdate: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/LYNEXTUPDATE=1') = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;

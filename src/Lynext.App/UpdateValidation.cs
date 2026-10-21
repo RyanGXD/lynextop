@@ -37,6 +37,9 @@ public static class UpdateValidation
 
     public static bool IsNewerVersion(Version candidate, Version installed) => candidate > installed;
 
+    public static bool IsNewerVersion(Version stableCandidate, LynextReleaseVersion installed) =>
+        new LynextReleaseVersion(stableCandidate, false).CompareTo(installed) > 0;
+
     public static bool IsExpectedInstallerName(string? assetName, Version version) =>
         string.Equals(assetName, $"Lynext-Setup-{version.ToString(3)}-x64.exe", StringComparison.OrdinalIgnoreCase);
 

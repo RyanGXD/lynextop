@@ -3,10 +3,12 @@ param(
     [ValidateSet("win-x64")]
     [string]$Runtime = "win-x64",
     [string]$Configuration = "Release",
-    [string]$Version = "0.1.0"
+    [string]$Version = "0.1.0",
+    [string]$InformationalVersion = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($InformationalVersion)) { $InformationalVersion = "$Version-preview" }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repoRoot "src\Lynext.App\Lynext.App.csproj"
 $publishDir = Join-Path $repoRoot "artifacts\publish"
@@ -68,7 +70,7 @@ $font.Dispose()
 $format.Dispose()
 
 Write-Host "Publicando Lynext para $Runtime..." -ForegroundColor Cyan
-dotnet publish $project -c $Configuration -r $Runtime --self-contained true "-p:Version=$Version" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $publishDir
+dotnet publish $project -c $Configuration -r $Runtime --self-contained true "-p:Version=$Version" "-p:InformationalVersion=$InformationalVersion" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $publishDir
 
 if ($LASTEXITCODE -ne 0) {
     throw "A publicação do Lynext falhou (código $LASTEXITCODE)."
@@ -77,7 +79,7 @@ if ($LASTEXITCODE -ne 0) {
 $updaterProject = Join-Path $repoRoot "src\Lynext.Updater\Lynext.Updater.csproj"
 $updaterPublishDir = Join-Path $repoRoot "artifacts\updater-publish"
 Write-Host "Publicando componente auxiliar de atualização..." -ForegroundColor Cyan
-dotnet publish $updaterProject -c $Configuration -r $Runtime --self-contained true "-p:Version=$Version" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $updaterPublishDir
+dotnet publish $updaterProject -c $Configuration -r $Runtime --self-contained true "-p:Version=$Version" "-p:InformationalVersion=$InformationalVersion" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $updaterPublishDir
 
 if ($LASTEXITCODE -ne 0) {
     throw "A publicação do componente auxiliar falhou (código $LASTEXITCODE)."

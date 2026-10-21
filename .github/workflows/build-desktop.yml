@@ -37,10 +37,13 @@ jobs:
               throw "Only stable numeric release tags are supported by this workflow."
             }
             $version = $tag.TrimStart('v')
+            $informationalVersion = $version
           } else {
             $version = "0.1.0"
+            $informationalVersion = "$version-preview"
           }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "informational_version=$informationalVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Restore dependencies
         shell: pwsh
@@ -48,7 +51,7 @@ jobs:
 
       - name: Build app (diagnostic step)
         shell: pwsh
-        run: dotnet build .\src\Lynext.App\Lynext.App.csproj -c Release -p:Version="${{ steps.version.outputs.version }}"
+        run: dotnet build .\src\Lynext.App\Lynext.App.csproj -c Release -p:Version="${{ steps.version.outputs.version }}" -p:InformationalVersion="${{ steps.version.outputs.informational_version }}"
 
       - name: Run update validation tests
         shell: pwsh
@@ -56,11 +59,11 @@ jobs:
 
       - name: Publish updater helper
         shell: pwsh
-        run: dotnet publish .\src\Lynext.Updater\Lynext.Updater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true "-p:Version=${{ steps.version.outputs.version }}" -o .\artifacts\updater-publish
+        run: dotnet publish .\src\Lynext.Updater\Lynext.Updater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true "-p:Version=${{ steps.version.outputs.version }}" "-p:InformationalVersion=${{ steps.version.outputs.informational_version }}" -o .\artifacts\updater-publish
 
       - name: Build application and installer
         shell: pwsh
-        run: .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}"
+        run: .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}" -InformationalVersion "${{ steps.version.outputs.informational_version }}"
 
       - name: Generate installer checksum
         shell: pwsh

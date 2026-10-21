@@ -18,6 +18,8 @@ public sealed record UpdateManifest(
     string ReleaseUrl,
     DateTimeOffset PreparedAt);
 
+public sealed record PreparedUpdate(UpdateInfo Update, VerifiedInstaller Installer);
+
 public static class UpdateOrchestrator
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -27,7 +29,30 @@ public static class UpdateOrchestrator
         IProgress<UpdateDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var prepared = await DownloadAndStageAsync(update, progress, cancellationToken);
+        await StartPreparedUpdateAsync(prepared, cancellationToken);
+    }
+
+    public static string GetHelperSourcePath() => Path.Combine(AppContext.BaseDirectory, "Lynext.Updater.exe");
+    public static bool HasUpdateHelper => File.Exists(GetHelperSourcePath());
+
+    public static async Task<PreparedUpdate> DownloadAndStageAsync(
+        UpdateInfo update,
+        IProgress<UpdateDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!HasUpdateHelper)
+            throw new FileNotFoundException(
+                "Esta instalação ainda não contém o componente seguro de atualização. Instale manualmente uma versão recente uma única vez; as próximas atualizações poderão ser feitas pelo Lynext.",
+                GetHelperSourcePath());
         var verified = await UpdateService.DownloadAndVerifyInstallerAsync(update, progress, cancellationToken);
+        return new PreparedUpdate(update, verified);
+    }
+
+    public static async Task StartPreparedUpdateAsync(PreparedUpdate prepared, CancellationToken cancellationToken = default)
+    {
+        var update = prepared.Update;
+        var verified = prepared.Installer;
         cancellationToken.ThrowIfCancellationRequested();
 
         var currentExecutable = Environment.ProcessPath;
@@ -41,7 +66,7 @@ public static class UpdateOrchestrator
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lynext", "Updates");
         Directory.CreateDirectory(updatesDirectory);
 
-        var helperSource = Path.Combine(AppContext.BaseDirectory, "Lynext.Updater.exe");
+        var helperSource = GetHelperSourcePath();
         if (!File.Exists(helperSource))
             throw new FileNotFoundException(
                 "Esta instalação ainda não contém o componente seguro de atualização. Instale manualmente uma versão recente uma única vez; as próximas atualizações poderão ser feitas pelo Lynext.",
@@ -58,7 +83,7 @@ public static class UpdateOrchestrator
             update.Version,
             installDirectory,
             Path.GetFullPath(currentExecutable),
-            UpdateService.InstalledVersion.ToString(3),
+            UpdateService.InstalledDisplayVersion,
             previousHash,
             currentProcess.Id,
             currentProcess.StartTime.ToUniversalTime().Ticks,

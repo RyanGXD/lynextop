@@ -165,9 +165,10 @@ internal static class Program
             || !UpdateValidation.IsAllowedHash(manifest.PreviousExecutableSha256))
             throw new InvalidDataException("O manifesto contém um hash inválido.");
 
-        if (!Version.TryParse(manifest.TargetVersion, out var targetVersion)
-            || !Version.TryParse(manifest.PreviousVersion, out var previousVersion)
-            || targetVersion <= previousVersion)
+        if (!TryParseReleaseVersion(manifest.TargetVersion, out var targetVersion, out var targetPreview)
+            || targetPreview
+            || !TryParseReleaseVersion(manifest.PreviousVersion, out var previousVersion, out var previousPreview)
+            || CompareReleaseVersions(targetVersion, targetPreview, previousVersion, previousPreview) <= 0)
             throw new InvalidDataException("A versão de destino não é válida ou não é mais recente.");
 
         var installerPath = Path.GetFullPath(manifest.InstallerPath);
@@ -270,7 +271,12 @@ internal static class Program
 
     private static string? TryReadExecutableVersion(string path)
     {
-        try { return AssemblyName.GetAssemblyName(path).Version?.ToString(3); }
+        try
+        {
+            var productVersion = FileVersionInfo.GetVersionInfo(path).ProductVersion;
+            if (TryParseReleaseVersion(productVersion, out _, out _)) return productVersion;
+            return AssemblyName.GetAssemblyName(path).Version?.ToString(3);
+        }
         catch (Exception ex)
         {
             Log("Não foi possível ler a versão do executável: " + ex.Message);
@@ -279,9 +285,27 @@ internal static class Program
     }
 
     private static bool VersionsEqual(string left, string right) =>
-        Version.TryParse(left, out var leftVersion)
-        && Version.TryParse(right, out var rightVersion)
-        && leftVersion.CompareTo(rightVersion) == 0;
+        TryParseReleaseVersion(left, out var leftVersion, out var leftPreview)
+        && TryParseReleaseVersion(right, out var rightVersion, out var rightPreview)
+        && CompareReleaseVersions(leftVersion, leftPreview, rightVersion, rightPreview) == 0;
+
+    private static bool TryParseReleaseVersion(string? value, out Version version, out bool preview)
+    {
+        version = new Version(0, 0, 0);
+        preview = false;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var normalized = value.Trim();
+        preview = normalized.EndsWith("-preview", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("-preview.", StringComparison.OrdinalIgnoreCase);
+        if (preview) normalized = normalized[..normalized.IndexOf("-preview", StringComparison.OrdinalIgnoreCase)];
+        return Version.TryParse(normalized, out version!);
+    }
+
+    private static int CompareReleaseVersions(Version left, bool leftPreview, Version right, bool rightPreview)
+    {
+        var numeric = left.CompareTo(right);
+        return numeric != 0 ? numeric : leftPreview == rightPreview ? 0 : leftPreview ? -1 : 1;
+    }
 
     private static async Task<string> HashFileAsync(string path)
     {
