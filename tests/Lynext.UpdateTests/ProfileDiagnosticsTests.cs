@@ -64,6 +64,20 @@ public sealed class ProfileDiagnosticsTests
         Assert.Equal(expected, ProfileDiagnosticsService.GetPowerReportArguments(type));
     }
 
+    [Theory]
+    [InlineData("\"C:\\Program Files\\Vendor\\app.exe\" --background", "C:\\Program Files\\Vendor\\app.exe")]
+    [InlineData("%LOCALAPPDATA%\\Vendor\\app.exe --silent", "%LOCALAPPDATA%\\Vendor\\app.exe")]
+    public void StartupCommandResolverReturnsExecutableWithoutArguments(string command, string expected)
+    {
+        Assert.Equal(Environment.ExpandEnvironmentVariables(expected), ProfileDiagnosticsService.ExpandStartupTarget(command));
+    }
+
+    [Fact]
+    public void StartupCommandResolverDoesNotGuessUnrecognizedTargets()
+    {
+        Assert.Contains("destino não identificado", ProfileDiagnosticsService.ExpandStartupTarget("rundll32 strange syntax"));
+    }
+
     [Fact]
     public void UnsupportedPowerReportIsRejectedBeforeCommandExecution()
     {

@@ -97,6 +97,7 @@ public partial class MainWindow : Window
         _selectedProfile = profile;
         ProfileTitle.Text = definition.Name;
         ProfileDescription.Text = definition.Description;
+        ActivatePowerProfileButton.Content = definition.Id == "lite" ? "Ativar Lynext Lite" : "Configurar e ativar este plano";
         var screens = OptimizationProfileCatalog.GetVisiblePanels(definition.Name);
         WelcomeProfilePanel.Visibility = Visibility.Collapsed;
         GamerProfilePanel.Visibility = screens.Contains("gamer") || screens.Contains("gamer-ultra") ? Visibility.Visible : Visibility.Collapsed;
@@ -201,11 +202,11 @@ public partial class MainWindow : Window
     private async void LiteDiagnostic_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedProfile != "Lite") return;
-        LiteStatusText.Text = "Lendo itens de inicialização; nenhuma alteração será feita...";
+        LiteStatusText.Text = "Analisando sistema, processos e inicialização; nenhuma alteração será feita...";
         var report = await Task.Run(ProfileDiagnosticsService.RunLiteDiagnostic);
         if (_selectedProfile != "Lite") return;
         LiteReportText.Text = report;
-        LiteStatusText.Text = "Revisão concluída. Itens não foram ativados nem desativados.";
+        LiteStatusText.Text = "Análise local concluída. Nenhum processo foi encerrado, item desativado ou arquivo removido.";
         StatusText.Text = "Lynext Lite • revisão concluída (somente leitura)";
         FeedbackText.Text = "Diagnóstico Lite concluído somente para leitura.";
     }

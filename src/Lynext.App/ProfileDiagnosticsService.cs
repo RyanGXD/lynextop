@@ -7,7 +7,7 @@ using Microsoft.Win32;
 
 namespace Lynext;
 
-public sealed record StartupEntry(string Name, string Origin, string Location, string State, string Impact);
+public sealed record StartupEntry(string Name, string Origin, string Location, string State, string Impact, string ExecutableOrTarget = "", string PublisherMetadata = "");
 public sealed record PowerCommandResult(bool Success, string Output, string Error, int? ExitCode);
 
 /// <summary>Read-only profile inventory and explicitly requested powercfg reports.</summary>
@@ -50,8 +50,11 @@ public static class ProfileDiagnosticsService
             if (key is null) return;
             foreach (var name in key.GetValueNames())
             {
-                if (key.GetValue(name) is null) continue;
-                entries.Add(new(name, origin, $"{root.Name}\\{path} (argumentos omitidos)", "Habilitado (observado)", "Impacto não medido"));
+                var raw = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames)?.ToString();
+                if (raw is null) continue;
+                var target = ExpandStartupTarget(raw);
+                entries.Add(new(name, origin, $"{root.Name}\\{path}", "Habilitado (observado)", "Impacto não medido",
+                    target, ReadPublisherMetadata(target)));
             }
         }
         catch { /* Permission or registry-view limitations are intentionally non-fatal. */ }
@@ -63,7 +66,8 @@ public static class ProfileDiagnosticsService
         {
             if (!Directory.Exists(folder)) return;
             foreach (var path in Directory.EnumerateFiles(folder))
-                entries.Add(new(Path.GetFileNameWithoutExtension(path), origin, "Pasta Startup (caminho completo omitido)", "Habilitado (observado)", "Impacto não medido"));
+                entries.Add(new(Path.GetFileNameWithoutExtension(path), origin, folder, "Habilitado (observado)", "Impacto não medido",
+                    path, ReadPublisherMetadata(path)));
         }
         catch { /* Keep inventory read-only and best effort. */ }
     }
@@ -81,9 +85,50 @@ public static class ProfileDiagnosticsService
             "Limpeza e armazenamento serão feitos pelo Windows; o Lynext não exclui arquivos pessoais.",
             ""
         };
-        lines.AddRange(entries.Select(item => $"• {item.Name} — {item.Origin}; {item.State}; {item.Impact}\n  {item.Location}"));
+        lines.AddRange(entries.Select(item => $"• {item.Name} — {item.Origin}; {item.State}; {item.Impact}\n  Local: {item.Location}\n  Executável/destino: {item.ExecutableOrTarget}\n  Fabricante nos metadados: {item.PublisherMetadata} (assinatura não verificada)"));
         if (entries.Count == 0) lines.Add("Nenhum item foi listado ou o acesso não está disponível; isso não comprova ausência de inicialização automática.");
+        lines.Add("");
+        try
+        {
+            lines.AddRange(LiteSystemDiagnosticsService.BuildReport(LiteSystemDiagnosticsService.ReadSnapshot()).Split(Environment.NewLine));
+        }
+        catch (Exception ex)
+        {
+            lines.Add("Amostra de processos/armazenamento indisponível: " + ex.GetType().Name + ". Nenhuma alteração foi feita.");
+        }
         return string.Join(Environment.NewLine, lines);
+    }
+
+    public static string ExpandStartupTarget(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return "destino não identificado";
+        var value = command.Trim();
+        string? executable = null;
+        if (value.StartsWith('"'))
+        {
+            var closingQuote = value.IndexOf('"', 1);
+            if (closingQuote > 1) executable = value[1..closingQuote];
+        }
+        else
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(value,
+                @"(?i)^(.+?\.(?:exe|com|cmd|bat|vbs|js|ps1))(?=\s|$)");
+            if (match.Success) executable = match.Groups[1].Value;
+        }
+        if (string.IsNullOrWhiteSpace(executable)) return "destino não identificado (formato não reconhecido)";
+        try { return Environment.ExpandEnvironmentVariables(executable); }
+        catch { return executable; }
+    }
+
+    private static string ReadPublisherMetadata(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return "indisponível";
+            return FileVersionInfo.GetVersionInfo(path).CompanyName?.Trim() is { Length: > 0 } company
+                ? company : "não informado";
+        }
+        catch { return "indisponível"; }
     }
 
     public static string RunBusinessDiagnostic()

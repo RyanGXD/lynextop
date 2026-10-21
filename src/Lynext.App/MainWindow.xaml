@@ -62,7 +62,7 @@
                     <TextBlock Text="PERFIS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,12"/>
                     <Button Content="Lynext Ultra Performance" Tag="Gamer Ultra" Click="Profile_Click"/>
                     <Button Content="Lynext Gamer" Tag="Gamer" Click="Profile_Click"/>
-                    <Button Content="Lynext Empresarial" Tag="Empresarial" Click="Profile_Click"/>
+                    <Button Content="Lynext Empresarial" Tag="Empresarial" Click="Profile_Click"/>
                     <Button Content="Lynext Lite" Tag="Lite" Click="Profile_Click"/>
                     <Button Content="Lynext Economia" Tag="Economia" Click="Profile_Click"/>
                     <TextBlock Text="Selecione um perfil para consultar o plano correspondente. A seleção não altera o Windows; somente o botão de ativação aplica o plano Lynext." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
@@ -124,10 +124,10 @@
                         </StackPanel>
                         <StackPanel x:Name="LiteProfilePanel" Visibility="Collapsed">
                             <TextBlock Text="LITE • USO COTIDIANO" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}"/>
-                            <TextBlock Text="Revise o que inicia com o Windows e use os controles nativos para ajustar o que você reconhece. O Lynext não desativa itens, mata processos ou apaga arquivos." TextWrapping="Wrap" Margin="0,7,0,10"/>
+                            <TextBlock Text="Um perfil para deixar o Windows mais leve no dia a dia. Organize a inicialização, revise atividades opcionais, reduza excessos e mantenha o sistema responsivo sem desativar componentes essenciais." TextWrapping="Wrap" Margin="0,7,0,10"/>
                             <TextBlock x:Name="LiteStatusText" Text="Perfil selecionado; nenhuma configuração foi alterada." Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,4">
-                                <Button Content="Analisar inicialização" Click="LiteDiagnostic_Click"/>
+                                <Button Content="Analisar sistema e inicialização" Click="LiteDiagnostic_Click"/>
                                 <Button Content="Configurações de inicialização" Tag="ms-settings:startupapps" Click="OpenNativeSettings_Click"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal">
