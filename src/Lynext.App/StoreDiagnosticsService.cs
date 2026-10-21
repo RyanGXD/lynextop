@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.IO;
 using System.Management;
 using System.Diagnostics;
 using System.Text.Json;
@@ -206,9 +207,9 @@ public static class StoreDiagnosticsService
             var output = outputTask.GetAwaiter().GetResult();
             var error = errorTask.GetAwaiter().GetResult();
             if (process.ExitCode != 0) throw new InvalidOperationException(error);
-            foreach (var line in output.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries))
+            foreach (var line in output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
             {
-                var parts = line.Split('|', 4);
+                var parts = line.Split(new[] { '|' }, 4, StringSplitOptions.None);
                 if (parts[0] == "EVENTO") items.Add(new("Implantação AppX (7 dias)", parts.Length > 1 && parts[1] == "Indisponível" ? "Não verificado" : "Evento", parts.Length > 2 ? string.Join(" | ", parts.Skip(1)) : line));
                 else if (parts[0] == "Provisionado" && parts.Length >= 3) items.Add(new("Pacote provisionado " + parts[1], parts[2], parts.Length > 3 ? parts[3] : string.Empty));
                 else if (parts.Length >= 3) items.Add(new("Pacote " + parts[0], parts[1], string.Join(" | ", parts.Skip(2))));
