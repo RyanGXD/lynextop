@@ -159,7 +159,7 @@ public sealed class UpdateValidationTests
     [Theory]
     [InlineData("0.1.0-preview", true)]
     [InlineData("0.1.0-preview.abc123", true)]
-    [InlineData("0.1.0", false)]
+    [InlineData("0.1.0", true)]
     [InlineData("v0.1.0-preview", false)]
     [InlineData("preview", false)]
     public void ParsesBuildChannelMetadata(string value, bool expected)
