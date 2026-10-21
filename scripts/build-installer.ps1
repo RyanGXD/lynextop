@@ -74,6 +74,20 @@ if ($LASTEXITCODE -ne 0) {
     throw "A publicação do Lynext falhou (código $LASTEXITCODE)."
 }
 
+$updaterProject = Join-Path $repoRoot "src\Lynext.Updater\Lynext.Updater.csproj"
+$updaterPublishDir = Join-Path $repoRoot "artifacts\updater-publish"
+Write-Host "Publicando componente auxiliar de atualização..." -ForegroundColor Cyan
+dotnet publish $updaterProject -c $Configuration -r $Runtime --self-contained true "-p:Version=$Version" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $updaterPublishDir
+
+if ($LASTEXITCODE -ne 0) {
+    throw "A publicação do componente auxiliar falhou (código $LASTEXITCODE)."
+}
+
+$updaterExe = Join-Path $updaterPublishDir "Lynext.Updater.exe"
+if (-not (Test-Path $updaterExe)) {
+    throw "O componente auxiliar Lynext.Updater.exe não foi encontrado após a publicação."
+}
+
 $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
 $programFiles = [Environment]::GetFolderPath('ProgramFiles')
 $compilerCandidates = @(
@@ -95,5 +109,14 @@ Write-Host "Gerando instalador..." -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) {
     throw "A criação do instalador falhou (código $LASTEXITCODE)."
 }
+
+$installerPath = Join-Path $artifactDir "Lynext-Setup-$Version-x64.exe"
+if (-not (Test-Path -LiteralPath $installerPath)) {
+    throw "O instalador esperado não foi encontrado: $installerPath"
+}
+$checksumPath = $installerPath + ".sha256"
+$sha256 = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+Set-Content -LiteralPath $checksumPath -Value "$sha256  $([System.IO.Path]::GetFileName($installerPath))" -Encoding ascii -NoNewline
+Write-Host "SHA-256 gerado: $checksumPath" -ForegroundColor Green
 
 Write-Host "Concluído. Verifique a pasta artifacts." -ForegroundColor Green
