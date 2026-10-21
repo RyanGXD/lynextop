@@ -11,6 +11,8 @@ public partial class MainWindow : Window
     private HardwareSnapshot? _hardware;
     private UpdateInfo? _availableUpdate;
     private bool _isCheckingUpdates;
+    private bool _isUpdating;
+    private CancellationTokenSource? _updateCancellation;
 
     public MainWindow()
     {
@@ -289,25 +291,31 @@ public partial class MainWindow : Window
 
     private async Task CheckForUpdatesAsync(bool showWhenUnavailable, bool automatic)
     {
-        if (_isCheckingUpdates)
+        if (_isCheckingUpdates || _isUpdating)
             return;
 
         _isCheckingUpdates = true;
         CheckUpdatesButton.IsEnabled = false;
+        _availableUpdate = null;
+        UpdateAvailableText.Visibility = Visibility.Collapsed;
+        UpdateNotesText.Visibility = Visibility.Collapsed;
+        InstallUpdateButton.Visibility = Visibility.Collapsed;
+        InstallUpdateButton.IsEnabled = false;
+        LaterUpdateButton.Visibility = Visibility.Collapsed;
         UpdateStatusText.Text = automatic
             ? "Verificando atualizações em segundo plano..."
-            : "Consultando versões estáveis no GitHub...";
+            : "Consultando Releases estáveis no GitHub...";
 
         try
         {
             _availableUpdate = await UpdateService.CheckLatestAsync();
             if (_availableUpdate is null)
             {
-                UpdateStatusText.Text = "Versão instalada: " + UpdateService.InstalledVersion;
+                UpdateStatusText.Text = "Nenhuma atualização disponível. Versão instalada: " + UpdateService.InstalledVersion;
                 if (showWhenUnavailable)
                 {
                     MessageBox.Show(
-                        "Nenhuma atualização estável foi encontrada. Você já pode estar na versão atual ou ainda não existe uma Release com instalador publicado.",
+                        "Nenhuma atualização estável mais recente foi encontrada. Se a publicação acabou de ser feita, tente novamente em alguns instantes.",
                         "Lynext — Atualizações",
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
@@ -315,68 +323,192 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var notes = string.IsNullOrWhiteSpace(_availableUpdate.Notes)
-                ? "Não há notas de versão publicadas."
-                : _availableUpdate.Notes;
-            var answer = MessageBox.Show(
-                $"Uma nova versão está disponível: {_availableUpdate.Version}\nVersão instalada: {UpdateService.InstalledVersion}\n\nNotas da versão:\n{TrimNotes(notes)}\n\nDeseja baixar o instalador oficial agora? A instalação só começa após outra confirmação.",
-                "Lynext — Atualização disponível",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Information);
-
-            UpdateStatusText.Text = $"Atualização {_availableUpdate.Version} disponível.";
-            if (answer != MessageBoxResult.Yes)
-                return;
-
-            CheckUpdatesButton.Content = "Baixando...";
-            var progress = new Progress<double>(value =>
-                UpdateStatusText.Text = $"Baixando instalador: {value:0}%");
-            var installerPath = await UpdateService.DownloadInstallerAsync(_availableUpdate, progress);
-
-            var launch = MessageBox.Show(
-                "O download terminou. O Windows poderá pedir permissão para abrir o instalador. Salve seu trabalho antes de continuar. Deseja abrir o instalador agora?",
-                "Lynext — Instalar atualização",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-
-            if (launch == MessageBoxResult.Yes)
-            {
-                Process.Start(new ProcessStartInfo(installerPath) { UseShellExecute = true });
-                UpdateStatusText.Text = "Instalador aberto. Siga as instruções dele para concluir a atualização.";
-            }
-            else
-            {
-                UpdateStatusText.Text = $"Instalador baixado: {installerPath}";
-                MessageBox.Show($"Você pode executar o instalador depois:\n{installerPath}", "Lynext");
-            }
+            ShowAvailableUpdate(_availableUpdate);
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatusText.Text = "Verificação de atualização cancelada.";
         }
         catch (Exception ex)
         {
-            UpdateStatusText.Text = "Não foi possível verificar ou baixar a atualização.";
+            UpdateStatusText.Text = "Não foi possível verificar atualizações. Sua versão não foi confirmada como atual.";
+            UpdateOrchestrator.WriteUpdateLog("Falha ao verificar Releases: " + ex);
             if (!automatic)
             {
                 MessageBox.Show(
-                    $"Falha ao verificar/baixar a atualização. Confira sua conexão e tente novamente.\n\nDetalhes: {ex.Message}",
-                    "Lynext — Atualizações",
+                    "Não foi possível verificar a versão mais recente. Confira sua conexão e tente novamente.\n\nDetalhes: " + ex.Message,
+                    "Lynext — Falha na verificação",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
             else
             {
-                FeedbackText.Text = "Não foi possível verificar atualizações agora. Você pode tentar novamente pelo botão de atualizações.";
+                FeedbackText.Text = "A verificação automática falhou. Você pode tentar novamente pelo botão de atualizações.";
             }
         }
         finally
         {
             _isCheckingUpdates = false;
-            CheckUpdatesButton.IsEnabled = true;
-            CheckUpdatesButton.Content = "Verificar atualizações";
+            CheckUpdatesButton.IsEnabled = !_isUpdating;
         }
+    }
+
+    private void ShowAvailableUpdate(UpdateInfo update)
+    {
+        var published = update.PublishedAt.HasValue
+            ? " • Publicada em " + update.PublishedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            : string.Empty;
+        var size = update.AssetSize.HasValue
+            ? " • " + FormatBytes(update.AssetSize.Value)
+            : string.Empty;
+
+        UpdateAvailableText.Text = $"Nova versão {update.Version} disponível (instalada: {UpdateService.InstalledVersion}){published}{size}.";
+        UpdateAvailableText.Visibility = Visibility.Visible;
+        UpdateNotesText.Text = string.IsNullOrWhiteSpace(update.Notes)
+            ? "Esta versão não contém notas de lançamento."
+            : TrimNotes(update.Notes);
+        UpdateNotesText.Visibility = Visibility.Visible;
+        InstallUpdateButton.Visibility = Visibility.Visible;
+        InstallUpdateButton.IsEnabled = update.HasIntegritySource;
+        LaterUpdateButton.Visibility = Visibility.Visible;
+        UpdateStatusText.Text = update.HasIntegritySource
+            ? "Atualização disponível. O instalador será verificado antes de ser executado."
+            : "Atualização disponível, mas não há SHA-256 verificável nesta Release. A instalação pelo atualizador está bloqueada por segurança.";
+    }
+
+    private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is null || _isUpdating)
+            return;
+
+        if (!_availableUpdate.HasIntegritySource)
+        {
+            MessageBox.Show(
+                "Esta Release não fornece um SHA-256 verificável. O Lynext não executará um instalador sem validar sua integridade.",
+                "Lynext — Integridade não disponível",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var confirmation = MessageBox.Show(
+            $"O Lynext vai baixar e validar a versão {_availableUpdate.Version}. Depois, o programa será fechado temporariamente, o instalador oficial será aberto e o Lynext será iniciado novamente após a confirmação da instalação.\n\nSalve seu trabalho antes de continuar.",
+            "Lynext — Confirmar atualização",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Information);
+        if (confirmation != MessageBoxResult.Yes)
+            return;
+
+        _isUpdating = true;
+        _updateCancellation = new CancellationTokenSource();
+        var handoffStarted = false;
+        CheckUpdatesButton.IsEnabled = false;
+        InstallUpdateButton.IsEnabled = false;
+        LaterUpdateButton.IsEnabled = false;
+        CancelUpdateButton.Visibility = Visibility.Visible;
+        UpdateProgressBar.Visibility = Visibility.Visible;
+        UpdateProgressBar.IsIndeterminate = true;
+        UpdateProgressBar.Value = 0;
+        UpdateStatusText.Text = "Baixando instalador e preparando a validação de integridade...";
+
+        try
+        {
+            var progress = new Progress<UpdateDownloadProgress>(value =>
+            {
+                UpdateProgressBar.IsIndeterminate = !value.Percent.HasValue;
+                if (value.Percent.HasValue)
+                {
+                    UpdateProgressBar.Value = value.Percent.Value;
+                    var total = value.TotalBytes.HasValue ? FormatBytes(value.TotalBytes.Value) : "tamanho desconhecido";
+                    UpdateStatusText.Text = $"Baixando instalador: {value.Percent.Value:0}% ({FormatBytes(value.BytesReceived)} de {total}).";
+                }
+                else
+                {
+                    UpdateStatusText.Text = $"Baixando instalador: {FormatBytes(value.BytesReceived)} recebidos.";
+                }
+            });
+
+            await UpdateOrchestrator.StartUpdateAsync(_availableUpdate, progress, _updateCancellation.Token);
+            handoffStarted = true;
+            UpdateStatusText.Text = "Instalador validado. Fechando o Lynext e transferindo o controle para o atualizador...";
+            Application.Current.Shutdown();
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatusText.Text = "Download cancelado. Nenhuma instalação foi iniciada.";
+            UpdateProgressBar.Visibility = Visibility.Collapsed;
+            UpdateOrchestrator.WriteUpdateLog("Usuário cancelou a atualização antes do início do instalador.");
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text = ex is InvalidDataException
+                ? "Falha na validação da atualização. O instalador não foi executado."
+                : "Não foi possível preparar a atualização.";
+            UpdateOrchestrator.WriteUpdateLog("Falha ao preparar atualização: " + ex);
+            MessageBox.Show(
+                UpdateStatusText.Text + "\n\n" + ex.Message,
+                "Lynext — Falha na atualização",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            UpdateProgressBar.Visibility = Visibility.Collapsed;
+        }
+        finally
+        {
+            _updateCancellation?.Dispose();
+            _updateCancellation = null;
+            if (!handoffStarted)
+            {
+                _isUpdating = false;
+                CheckUpdatesButton.IsEnabled = true;
+                InstallUpdateButton.IsEnabled = _availableUpdate?.HasIntegritySource == true;
+                LaterUpdateButton.IsEnabled = true;
+                CancelUpdateButton.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private void CancelUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isUpdating)
+        {
+            UpdateStatusText.Text = "Cancelando o download com segurança...";
+            _updateCancellation?.Cancel();
+        }
+    }
+
+    private void LaterUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateAvailableText.Visibility = Visibility.Collapsed;
+        UpdateNotesText.Visibility = Visibility.Collapsed;
+        InstallUpdateButton.Visibility = Visibility.Collapsed;
+        LaterUpdateButton.Visibility = Visibility.Collapsed;
+        UpdateStatusText.Text = "Atualização adiada. Você pode verificar novamente mais tarde.";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        double size = Math.Max(0, bytes);
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+        return $"{size:0.0} {units[unit]}";
     }
 
     private void OpenReleases_Click(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo("https://github.com/RyanGXD/lynextop/releases") { UseShellExecute = true });
+        try
+        {
+            var destination = _availableUpdate?.ReleaseUrl ?? "https://github.com/RyanGXD/lynextop/releases";
+            Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text = "Não foi possível abrir a página de Releases: " + ex.Message;
+        }
     }
 
     private static string TrimNotes(string notes)

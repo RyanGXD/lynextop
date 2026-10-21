@@ -33,6 +33,8 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDesc
 
 [Files]
 Source: "..\artifacts\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; CI publishes this helper before compiling the installer. Local builds without it remain installable but cannot self-update until the helper is included.
+Source: "..\artifacts\updater-publish\Lynext.Updater.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\Lynext"; Filename: "{app}\{#AppExeName}"

@@ -2,20 +2,48 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Reflection;
 
 namespace Lynext;
 
-public sealed record UpdateInfo(string Version, string TagName, string Notes, Uri InstallerUri, string ReleaseUrl);
+public sealed record UpdateInfo(
+    string Version,
+    string TagName,
+    string Notes,
+    Uri InstallerUri,
+    Uri? ChecksumUri,
+    string? ExpectedSha256,
+    long? AssetSize,
+    DateTimeOffset? PublishedAt,
+    string ReleaseUrl)
+{
+    public string InstallerFileName => $"Lynext-Setup-{Version}-x64.exe";
+    public bool HasIntegritySource =>
+        UpdateValidation.TryParseSha256Digest(ExpectedSha256, out _) || ChecksumUri is not null;
+}
+
+public sealed record UpdateDownloadProgress(long BytesReceived, long? TotalBytes)
+{
+    public double? Percent => TotalBytes is > 0
+        ? Math.Clamp(BytesReceived * 100d / TotalBytes.Value, 0d, 100d)
+        : null;
+}
+
+public sealed record VerifiedInstaller(string FilePath, string Sha256, long Size);
 
 public static class UpdateService
 {
     private const string Owner = "RyanGXD";
     private const string Repository = "lynextop";
-    private static readonly string CurrentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
+    private const long MaxInstallerBytes = 1_000_000_000;
+    private const int MaxChecksumBytes = 8 * 1024;
+    private const int MaxRedirects = 5;
+    private static readonly string CurrentVersion =
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
 
-    // Keep API checks short, but allow larger installer downloads on slower connections.
     private static readonly HttpClient ApiClient = CreateApiClient();
     private static readonly HttpClient DownloadClient = CreateDownloadClient();
 
@@ -30,12 +58,14 @@ public static class UpdateService
 
     private static HttpClient CreateDownloadClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
+        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Lynext-Optimizer/" + CurrentVersion);
         return client;
     }
 
-    public static Version InstalledVersion => Version.TryParse(CurrentVersion, out var version) ? version : new Version(0, 1, 0);
+    public static Version InstalledVersion =>
+        Version.TryParse(CurrentVersion, out var version) ? version : new Version(0, 1, 0);
 
     public static async Task<UpdateInfo?> CheckLatestAsync(CancellationToken cancellationToken = default)
     {
@@ -43,7 +73,12 @@ public static class UpdateService
         using var response = await ApiClient.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
-            return null; // No stable release has been published yet.
+            return null;
+
+        if (response.StatusCode == HttpStatusCode.Forbidden
+            && response.Headers.TryGetValues("X-RateLimit-Remaining", out var remainingValues)
+            && remainingValues.FirstOrDefault() == "0")
+            throw new HttpRequestException("O limite de consultas do GitHub foi atingido. Tente novamente mais tarde.", null, response.StatusCode);
 
         response.EnsureSuccessStatusCode();
 
@@ -51,89 +86,267 @@ public static class UpdateService
         using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
         var root = json.RootElement;
 
-        var tag = root.TryGetProperty("tag_name", out var tagElement) ? tagElement.GetString() : null;
-        var htmlUrl = root.TryGetProperty("html_url", out var urlElement) ? urlElement.GetString() : null;
-        var notes = root.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() ?? "" : "";
-
-        if (string.IsNullOrWhiteSpace(tag) || !TryParseVersion(tag, out var latestVersion))
+        if (!UpdateValidation.IsStableRelease(ReadBoolean(root, "draft"), ReadBoolean(root, "prerelease")))
             return null;
 
-        if (latestVersion <= InstalledVersion)
+        var tag = ReadString(root, "tag_name");
+        if (!UpdateValidation.TryParseVersionTag(tag, out var latestVersion))
+            throw new InvalidDataException("A última Release do GitHub tem uma tag de versão inválida.");
+
+        if (!UpdateValidation.IsNewerVersion(latestVersion, InstalledVersion))
             return null;
 
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
-            return null;
+            throw new InvalidDataException("A Release mais recente não contém ativos publicados.");
 
-        foreach (var asset in assets.EnumerateArray())
+        var versionText = latestVersion.ToString(3);
+        var installerName = $"Lynext-Setup-{versionText}-x64.exe";
+        var installerAsset = assets.EnumerateArray()
+            .FirstOrDefault(asset => string.Equals(ReadString(asset, "name"), installerName, StringComparison.OrdinalIgnoreCase));
+
+        if (installerAsset.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException($"A Release {tag} não contém o instalador compatível {installerName}.");
+
+        var installerUrlText = ReadString(installerAsset, "browser_download_url");
+        if (!Uri.TryCreate(installerUrlText, UriKind.Absolute, out var installerUri)
+            || !UpdateValidation.IsAllowedDownloadUri(installerUri))
+            throw new InvalidDataException("O endereço do instalador não pertence a um domínio HTTPS de download permitido do GitHub.");
+
+        long? assetSize = null;
+        if (installerAsset.TryGetProperty("size", out var sizeElement)
+            && sizeElement.ValueKind == JsonValueKind.Number
+            && sizeElement.TryGetInt64(out var size)
+            && size > 0)
+            assetSize = size;
+
+        string? expectedHash = null;
+        if (UpdateValidation.TryParseSha256Digest(ReadString(installerAsset, "digest"), out var parsedDigest))
+            expectedHash = parsedDigest;
+
+        Uri? checksumUri = null;
+        var checksumName = installerName + ".sha256";
+        var checksumAsset = assets.EnumerateArray()
+            .FirstOrDefault(asset => string.Equals(ReadString(asset, "name"), checksumName, StringComparison.OrdinalIgnoreCase));
+        if (checksumAsset.ValueKind == JsonValueKind.Object)
         {
-            var name = asset.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : null;
-            var downloadUrl = asset.TryGetProperty("browser_download_url", out var downloadElement) ? downloadElement.GetString() : null;
-
-            if (string.IsNullOrWhiteSpace(name) ||
-                !name.StartsWith("Lynext-Setup-", StringComparison.OrdinalIgnoreCase) ||
-                !name.EndsWith("-x64.exe", StringComparison.OrdinalIgnoreCase) ||
-                !Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri) ||
-                uri.Scheme != Uri.UriSchemeHttps ||
-                (uri.Host != "github.com" && uri.Host != "release-assets.githubusercontent.com" && uri.Host != "objects.githubusercontent.com"))
-                continue;
-
-            return new UpdateInfo(latestVersion.ToString(), tag, notes, uri, htmlUrl ?? $"https://github.com/{Owner}/{Repository}/releases");
+            var checksumUrlText = ReadString(checksumAsset, "browser_download_url");
+            if (!Uri.TryCreate(checksumUrlText, UriKind.Absolute, out var parsedChecksumUri)
+                || !UpdateValidation.IsAllowedDownloadUri(parsedChecksumUri))
+                throw new InvalidDataException("O endereço do checksum não pertence a um domínio HTTPS de download permitido do GitHub.");
+            checksumUri = parsedChecksumUri;
         }
 
-        return null;
+        var publishedAtText = ReadString(root, "published_at");
+        DateTimeOffset? publishedAt = DateTimeOffset.TryParse(publishedAtText, out var parsedPublishedAt)
+            ? parsedPublishedAt
+            : null;
+
+        var releaseUrlText = ReadString(root, "html_url");
+        var releaseUrl = Uri.TryCreate(releaseUrlText, UriKind.Absolute, out var releaseUri)
+            && releaseUri.Scheme == Uri.UriSchemeHttps
+            && string.Equals(releaseUri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+            ? releaseUri.AbsoluteUri
+            : $"https://github.com/{Owner}/{Repository}/releases";
+
+        return new UpdateInfo(
+            versionText,
+            tag!,
+            ReadString(root, "body") ?? string.Empty,
+            installerUri,
+            checksumUri,
+            expectedHash,
+            assetSize,
+            publishedAt,
+            releaseUrl);
     }
 
-    public static async Task<string> DownloadInstallerAsync(UpdateInfo update, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    public static async Task<VerifiedInstaller> DownloadAndVerifyInstallerAsync(
+        UpdateInfo update,
+        IProgress<UpdateDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        var directory = Path.Combine(Path.GetTempPath(), "Lynext", "Updates");
-        Directory.CreateDirectory(directory);
-        var destination = Path.Combine(directory, $"Lynext-Setup-{update.Version}-x64.exe");
-        var temporary = destination + ".download";
+        if (!UpdateValidation.TryParseVersionTag(update.TagName, out var version)
+            || !string.Equals(version.ToString(3), update.Version, StringComparison.Ordinal))
+            throw new InvalidDataException("Os metadados da versão da atualização não são consistentes.");
+
+        if (!UpdateValidation.IsExpectedInstallerName(update.InstallerFileName, version))
+            throw new InvalidDataException("O nome do instalador não corresponde à versão esperada.");
+
+        if (!UpdateValidation.IsAllowedDownloadUri(update.InstallerUri))
+            throw new InvalidDataException("A origem do instalador não é permitida.");
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(15));
+        var token = timeout.Token;
+
+        string? expectedHash = null;
+        if (UpdateValidation.TryParseSha256Digest(update.ExpectedSha256, out var parsedHash))
+            expectedHash = parsedHash;
+
+        if (update.ChecksumUri is not null)
+        {
+            var sidecarHash = await DownloadChecksumAsync(update.ChecksumUri, update.InstallerFileName, token);
+            if (expectedHash is not null
+                && !string.Equals(expectedHash, sidecarHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("O SHA-256 da API do GitHub diverge do checksum publicado junto com o instalador.");
+            expectedHash = sidecarHash;
+        }
+
+        if (expectedHash is null)
+            throw new InvalidDataException("Esta Release não fornece um SHA-256 confiável. O Lynext bloqueou a execução do instalador.");
+
+        if (update.AssetSize is > MaxInstallerBytes)
+            throw new InvalidDataException("O instalador excede o limite de tamanho permitido.");
+
+        var updateRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Lynext", "Updates", "Downloads");
+        Directory.CreateDirectory(updateRoot);
+        var destination = Path.Combine(updateRoot, update.InstallerFileName);
+        var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".download";
 
         try
         {
-            using var response = await DownloadClient.GetAsync(update.InstallerUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await SendAllowedGetAsync(update.InstallerUri, token);
             response.EnsureSuccessStatusCode();
 
-            var total = response.Content.Headers.ContentLength;
-            const long maxInstallerBytes = 1_000_000_000;
-            if (total is > maxInstallerBytes)
+            var contentLength = response.Content.Headers.ContentLength;
+            if (contentLength is > MaxInstallerBytes)
                 throw new InvalidDataException("O instalador excede o limite de tamanho permitido.");
+            if (update.AssetSize.HasValue && contentLength.HasValue && update.AssetSize.Value != contentLength.Value)
+                throw new InvalidDataException("O tamanho informado pelo GitHub não corresponde ao tamanho da resposta de download.");
 
-            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            var expectedLength = update.AssetSize ?? contentLength;
+            await using var input = await response.Content.ReadAsStreamAsync(token);
+            await using var output = new FileStream(
+                temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
+            var buffer = new byte[81920];
+            long received = 0;
+            int read;
+            while ((read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), token)) > 0)
             {
-                var buffer = new byte[81920];
-                long received = 0;
-                int read;
-                while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
-                {
-                    received += read;
-                    if (received > maxInstallerBytes)
-                        throw new InvalidDataException("O instalador excedeu o limite de tamanho permitido.");
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                    if (total is > 0)
-                        progress?.Report(Math.Clamp((double)received / total.Value * 100d, 0d, 100d));
-                }
-                await output.FlushAsync(cancellationToken);
+                received += read;
+                if (received > MaxInstallerBytes)
+                    throw new InvalidDataException("O instalador excedeu o limite de tamanho permitido.");
+                hasher.AppendData(buffer, 0, read);
+                await output.WriteAsync(buffer.AsMemory(0, read), token);
+                progress?.Report(new UpdateDownloadProgress(received, expectedLength));
             }
 
+            await output.FlushAsync(token);
+            if (expectedLength.HasValue && received != expectedLength.Value)
+                throw new InvalidDataException("O download terminou, mas o tamanho final diverge dos metadados.");
+
+            var actualHash = Convert.ToHexString(hasher.GetHashAndReset()).ToLowerInvariant();
+            if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actualHash), Convert.FromHexString(expectedHash)))
+                throw new InvalidDataException("O SHA-256 do instalador não corresponde ao checksum oficial. O arquivo não será executado.");
+
             File.Move(temporary, destination, overwrite: true);
-            return destination;
+            return new VerifiedInstaller(destination, actualHash, received);
         }
         finally
         {
-            // Never leave a partial executable behind if a download fails or is cancelled.
             if (File.Exists(temporary))
                 File.Delete(temporary);
         }
     }
 
-    private static bool TryParseVersion(string tag, out Version version)
+    public static async Task<string> ComputeFileSha256Async(string path, CancellationToken cancellationToken = default)
     {
-        var normalized = tag.Trim();
-        if (normalized.StartsWith("v", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[1..];
-        return Version.TryParse(normalized, out version!);
+        await using var stream = new FileStream(
+            path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
+
+    private static async Task<string> DownloadChecksumAsync(
+        Uri checksumUri,
+        string installerFileName,
+        CancellationToken cancellationToken)
+    {
+        if (!UpdateValidation.IsAllowedDownloadUri(checksumUri))
+            throw new InvalidDataException("A origem do checksum não é permitida.");
+
+        using var response = await SendAllowedGetAsync(checksumUri, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength is > MaxChecksumBytes)
+            throw new InvalidDataException("O arquivo de checksum excede o limite permitido.");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var memory = new MemoryStream();
+        var buffer = new byte[1024];
+        int read;
+        while ((read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+        {
+            if (memory.Length + read > MaxChecksumBytes)
+                throw new InvalidDataException("O arquivo de checksum excede o limite permitido.");
+            await memory.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+
+        var text = new UTF8Encoding(false, true).GetString(memory.ToArray());
+        if (!UpdateValidation.TryParseChecksumText(text, installerFileName, out var parsedHash))
+            throw new InvalidDataException("O arquivo de checksum está vazio, malformado ou cita um nome de arquivo diferente.");
+        return parsedHash;
+    }
+
+    private static async Task<HttpResponseMessage> SendAllowedGetAsync(Uri initialUri, CancellationToken cancellationToken)
+    {
+        if (!UpdateValidation.IsAllowedDownloadUri(initialUri))
+            throw new InvalidDataException("O endereço de download não é permitido.");
+
+        var currentUri = initialUri;
+        for (var redirectCount = 0; redirectCount <= MaxRedirects; redirectCount++)
+        {
+            if (!UpdateValidation.IsAllowedDownloadUri(currentUri))
+                throw new InvalidDataException("Um redirecionamento apontou para uma origem não permitida.");
+
+            var request = new HttpRequestMessage(HttpMethod.Get, currentUri);
+            HttpResponseMessage response;
+            try
+            {
+                response = await DownloadClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            catch
+            {
+                request.Dispose();
+                throw;
+            }
+
+            if (!IsRedirect(response.StatusCode))
+                return response;
+
+            var location = response.Headers.Location;
+            response.Dispose();
+            request.Dispose();
+            if (location is null)
+                throw new InvalidDataException("O servidor retornou um redirecionamento sem destino.");
+            if (redirectCount == MaxRedirects)
+                throw new InvalidDataException("O servidor excedeu o limite de redirecionamentos permitido.");
+
+            currentUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
+            if (!UpdateValidation.IsAllowedDownloadUri(currentUri))
+                throw new InvalidDataException("O redirecionamento tenta sair dos domínios HTTPS permitidos do GitHub.");
+        }
+
+        throw new InvalidDataException("Não foi possível concluir o redirecionamento do download.");
+    }
+
+    private static bool IsRedirect(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.MovedPermanently
+            or HttpStatusCode.Redirect
+            or HttpStatusCode.SeeOther
+            or HttpStatusCode.TemporaryRedirect
+            or HttpStatusCode.PermanentRedirect;
+
+    private static bool ReadBoolean(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
+
+    private static string? ReadString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 }
