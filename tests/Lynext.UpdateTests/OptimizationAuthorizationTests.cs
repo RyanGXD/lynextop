@@ -1,4 +1,5 @@
 using Lynext;
+using Xunit;
 
 namespace Lynext.UpdateTests;
 
