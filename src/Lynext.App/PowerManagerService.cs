@@ -325,7 +325,7 @@ public sealed class PowerManagerService
     }
     private static string Marker(string id) => $"Lynext.PowerManager.Schema=1;Profile={id}";
     private static string? ParseGuid(string text) => Regex.Match(text, @"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").Success ? Regex.Match(text, @"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").Value.ToLowerInvariant() : null;
-    private static List<SchemeInfo> ParseSchemes(string text) => Regex.Matches(text, @"(?im)^\s*[^\r\n]*?\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b\s*\((.*?)\)(?:\s+\*)?\s*$").Cast<Match>().Select(m => new SchemeInfo(m.Groups[1].Value.ToLowerInvariant(), m.Groups[2].Value.Trim(), string.Empty)).ToList();
+    private static List<SchemeInfo> ParseSchemes(string text) => Regex.Matches(text, @"(?im)^\s*[^\r\n]*?\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b\}?\s*\((.*?)\)(?:\s+\*)?\s*$").Cast<Match>().Select(m => new SchemeInfo(m.Groups[1].Value.ToLowerInvariant(), m.Groups[2].Value.Trim(), string.Empty)).ToList();
     private Manifest ReadManifest() => ReadJson<Manifest>(ManifestPath) ?? new Manifest();
     private void SaveManifest(Manifest value) => WriteJson(ManifestPath, value);
     private static T? ReadJson<T>(string path) => File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), JsonOptions) : default;

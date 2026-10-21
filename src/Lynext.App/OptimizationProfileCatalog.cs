@@ -33,8 +33,8 @@ public static class OptimizationProfileCatalog
             ["gamer.game-mode", "gamer-ultra.power-plan", "power-manager.gamer-ultra"], true),
         new("gamer", "Lynext Gamer", "Perfil de desempenho para jogos, com gerenciamento de energia próprio.",
             ["gamer.game-mode", "power-manager.gamer"], true),
-        new("lite", "Lynext Lite", "Perfil cotidiano baseado em Balanced, preservando o gerenciamento de CPU do Windows.", ["power-manager.lite"], true),
         new("business", "Lynext Empresarial", "Configuração conservadora baseada em Balanced, com foco em compatibilidade e previsibilidade.", ["power-manager.business"], true),
+        new("lite", "Lynext Lite", "Perfil cotidiano baseado em Balanced, preservando o gerenciamento de CPU do Windows.", ["power-manager.lite"], true),
         new("economy", "Lynext Economia", "Perfil eficiente baseado em Balanced; respeita os recursos de bateria oferecidos pelo Windows e pelo equipamento.", ["power-manager.economy"], true)
     ];
 

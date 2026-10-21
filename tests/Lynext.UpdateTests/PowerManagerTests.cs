@@ -11,7 +11,7 @@ public sealed class PowerManagerTests
     {
         Assert.Equal(new[] { "Lynext Ultra Performance", "Lynext Gamer", "Lynext Empresarial", "Lynext Lite", "Lynext Economia" },
             OptimizationProfileCatalog.Profiles.Select(profile => profile.Name));
-        Assert.Equal(new[] { "gamer-ultra", "gamer", "lite", "business", "economy" },
+        Assert.Equal(new[] { "gamer-ultra", "gamer", "business", "lite", "economy" },
             OptimizationProfileCatalog.Profiles.Select(profile => profile.Id));
     }
 

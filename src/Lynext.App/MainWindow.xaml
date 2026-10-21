@@ -62,8 +62,8 @@
                     <TextBlock Text="PERFIS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,12"/>
                     <Button Content="Lynext Ultra Performance" Tag="Gamer Ultra" Click="Profile_Click"/>
                     <Button Content="Lynext Gamer" Tag="Gamer" Click="Profile_Click"/>
+                    <Button Content="Lynext Empresarial" Tag="Empresarial" Click="Profile_Click"/>
                     <Button Content="Lynext Lite" Tag="Lite" Click="Profile_Click"/>
-                    <Button Content="Lynext Empresarial" Tag="Empresarial" Click="Profile_Click"/>
                     <Button Content="Lynext Economia" Tag="Economia" Click="Profile_Click"/>
                     <TextBlock Text="Selecione um perfil para consultar o plano correspondente. A seleção não altera o Windows; somente o botão de ativação aplica o plano Lynext." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0"/>
                 </StackPanel>
