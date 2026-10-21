@@ -32,17 +32,39 @@ jobs:
       - name: Resolve build version
         id: version
         shell: pwsh
+        env:
+          BUILD_REF: ${{ github.ref }}
+          BUILD_REF_NAME: ${{ github.ref_name }}
         run: |
-          $ref = "${{ github.ref }}"
-          $tag = "${{ github.ref_name }}"
+          $ref = $env:BUILD_REF
+          $tag = $env:BUILD_REF_NAME
+          $stablePattern = '^v(\d+\.\d+\.\d+(?:\.\d+)?)$'
+          $betaPattern = '^v(\d+\.\d+\.\d+(?:\.\d+)?)-beta\.(\d+)$'
+
+          # Exercise accepted and rejected tag formats on every CI run, including branch builds.
+          foreach ($sample in @('v0.1.0', 'v1.2.3.4')) {
+            if ($sample -notmatch $stablePattern) {
+              throw "Stable tag pattern rejected valid sample '$sample'."
+            }
+          }
+          foreach ($sample in @('v0.1.0-beta.1', 'v1.2.3.4-beta.12')) {
+            if ($sample -notmatch $betaPattern) {
+              throw "Beta tag pattern rejected valid sample '$sample'."
+            }
+          }
+          foreach ($sample in @('v0.1', 'v0.1.0-beta', 'v0.1.0-beta.x', 'v1.2.3-rc.1')) {
+            if (($sample -match $stablePattern) -or ($sample -match $betaPattern)) {
+              throw "Tag pattern accepted invalid sample '$sample'."
+            }
+          }
 
           if ($ref.StartsWith("refs/tags/")) {
-            if ($tag -match '^v(\d+\.\d+\.\d+(?:\.\d+)?)$') {
+            if ($tag -match $stablePattern) {
               $version = $Matches[1]
               $informationalVersion = $version
               $releaseChannel = "stable"
             }
-            elseif ($tag -match '^v(\d+\.\d+\.\d+(?:\.\d+)?)-beta\.(\d+)$') {
+            elseif ($tag -match $betaPattern) {
               $baseVersion = $Matches[1]
               $betaNumber = $Matches[2]
               $version = "$baseVersion-beta.$betaNumber"
